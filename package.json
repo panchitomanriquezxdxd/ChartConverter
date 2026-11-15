@@ -1,0 +1,85 @@
+{
+  "name": "chartconverter",
+  "productName": "Chart Converter",
+  "version": "3.1.0",
+  "description": "Convierte charts de FNF entre Psych, Kade, Codename y V-Slice (.fnfc). Web, Windows, Linux, Android e iOS.",
+  "private": true,
+  "main": "electron/main.js",
+  "author": {
+    "name": "Panchito Manriquez",
+    "email": "panchitomanriquezxdxd@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/panchitomanriquezxdxd/ChartConverter",
+  "scripts": {
+    "test": "node --test tests/converter.test.js",
+    "icons": "python3 scripts/generate-icons.py",
+    "build:web": "node scripts/build-web.js",
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "cap:android": "npm run build:web && cap sync android",
+    "cap:ios": "npm run build:web && cap sync ios"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/share": "^8.0.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "build": {
+    "appId": "com.panchitomanriquez.chartconverter",
+    "productName": "Chart Converter",
+    "copyright": "Panchito Manriquez & Deiby [GamerCB]",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**",
+      "index.html",
+      "style.css",
+      "script.js",
+      "converter.js",
+      "manifest.webmanifest",
+      "favicon.svg",
+      "favicon.ico",
+      "icons/**",
+      "vendor/**",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "shortcutName": "Chart Converter",
+      "artifactName": "ChartConverter-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "ChartConverter-Portable-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "synopsis": "Convertidor de charts de FNF",
+      "maintainer": "Panchito Manriquez <panchitomanriquezxdxd@users.noreply.github.com>",
+      "artifactName": "ChartConverter-${version}-linux-${arch}.${ext}",
+      "target": ["AppImage", "deb"]
+    }
+  }
+}

@@ -10,6 +10,10 @@ const metaArea = document.getElementById("meta-area");
 const dropText = document.getElementById("drop-text");
 const dropHint = document.getElementById("drop-hint");
 const fileList = document.getElementById("file-list");
+const fileNames = document.getElementById("file-names");
+const warningsEl = document.getElementById("warnings");
+const clearBtn = document.getElementById("clear-btn");
+const toastEl = document.getElementById("toast");
 const chartTitle = document.getElementById("chart-title");
 const metaTitle = document.getElementById("meta-title");
 
@@ -58,10 +62,42 @@ function showEl(el, visible, display) {
     el.style.display = visible ? (display || "block") : "none";
 }
 
+// Aviso no bloqueante. alert() se cuelga o se omite en varios WebViews/PWA y bloquea la página.
+let toastTimer = null;
+function notify(message, kind) {
+    toastEl.textContent = message;
+    toastEl.className = "toast" + (kind ? " " + kind : "");
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, kind === "error" ? 9000 : 4500);
+}
+
+function renderFileNames() {
+    fileNames.textContent = "";
+    selectedFiles.forEach(f => {
+        const row = document.createElement("div");
+        row.textContent = "• " + f.name;
+        fileNames.appendChild(row);
+    });
+    clearBtn.style.display = selectedFiles.length ? "block" : "none";
+}
+
+// Avisos de la conversión (antes en modo normal solo iban a la consola, invisibles en móvil).
+function renderWarnings(list) {
+    warningsEl.textContent = "";
+    (list || []).forEach(w => {
+        const row = document.createElement("div");
+        row.textContent = "⚠ " + w;
+        warningsEl.appendChild(row);
+    });
+}
+
 function resetOutputs() {
     selectedFiles = [];
     currentPack = null;
     fileList.textContent = "";
+    renderWarnings([]);
+    renderFileNames();
     chartArea.value = "";
     metaArea.value = "";
     convertBtn.style.display = "none";
@@ -128,20 +164,26 @@ stickerToggle.addEventListener("change", e => {
 
 // ---------------------------------------------------------------- carga de archivos
 dropZone.addEventListener("click", () => fileInput.click());
+dropZone.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+});
 fileInput.addEventListener("change", e => {
     handleFiles(e.target.files);
     fileInput.value = ""; // permite volver a elegir el mismo archivo
 });
 dropZone.addEventListener("dragover", e => {
     e.preventDefault();
-    dropZone.style.borderColor = "#ff007f";
+    dropZone.classList.add("dragover");
 });
-dropZone.addEventListener("dragleave", () => { dropZone.style.borderColor = ""; });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
 dropZone.addEventListener("drop", e => {
     e.preventDefault();
-    dropZone.style.borderColor = "";
+    e.stopPropagation();
+    dropZone.classList.remove("dragover");
     handleFiles(e.dataTransfer.files);
 });
+// Soltar un archivo FUERA de la zona hacía que el navegador/Electron lo abriera y se perdiera la página.
+["dragover", "drop"].forEach(type => window.addEventListener(type, e => e.preventDefault()));
 
 function isAccepted(name) {
     const n = name.toLowerCase();
@@ -150,17 +192,31 @@ function isAccepted(name) {
         : n.endsWith(".json");
 }
 
+const fileKey = f => `${f.name}|${f.size}|${f.lastModified}`;
+
 function handleFiles(files) {
-    selectedFiles = Array.from(files).filter(f => isAccepted(f.name));
-    // Los resultados anteriores ya no corresponden a los nuevos archivos.
+    const incoming = Array.from(files || []);
+    const valid = incoming.filter(f => isAccepted(f.name));
+    const rejected = incoming.length - valid.length;
+
+    // Si ya se convirtió algo, una nueva selección empieza de cero (si no, se mezclarían canciones).
+    // Antes de convertir, los archivos se ACUMULAN: en el móvil es común elegirlos de uno en uno.
+    if (currentPack) selectedFiles = [];
+    const seen = new Set(selectedFiles.map(fileKey));
+    valid.forEach(f => { if (!seen.has(fileKey(f))) { seen.add(fileKey(f)); selectedFiles.push(f); } });
+
+    // Los resultados anteriores ya no corresponden a la nueva selección.
     chartArea.value = "";
     metaArea.value = "";
     currentPack = null;
     downloadZipBtn.style.display = "none";
+    renderWarnings([]);
+    renderFileNames();
 
     if (selectedFiles.length > 0) {
         fileList.textContent = `🔥 ¡${selectedFiles.length} archivo(s) detectado(s) listo(s) para reventar!`;
         convertBtn.style.display = "block";
+        if (rejected) notify(`Se ignoraron ${rejected} archivo(s) con formato no válido.`);
     } else {
         fileList.textContent = direction === "inverse"
             ? "⚠️ No se encontraron archivos .json, .fnfc o .zip válidos."
@@ -168,6 +224,12 @@ function handleFiles(files) {
         convertBtn.style.display = "none";
     }
 }
+
+clearBtn.addEventListener("click", resetOutputs);
+
+document.querySelectorAll("[data-copy]").forEach(btn => {
+    btn.addEventListener("click", () => copyToClipboard(btn.dataset.copy, btn));
+});
 
 function copyToClipboard(areaId, button) {
     const textarea = document.getElementById(areaId);
@@ -203,7 +265,47 @@ function copyToClipboard(areaId, button) {
     navigator.clipboard.writeText(textarea.value).then(done).catch(fallback);
 }
 
-function downloadBlob(blob, filename) {
+// ---------------------------------------------------------------- guardar archivos (multiplataforma)
+// • App Android/iOS (Capacitor): los WebViews NO descargan blobs con <a download>. Se escribe el
+//   archivo en caché con @capacitor/filesystem y se abre la hoja de compartir (@capacitor/share),
+//   desde donde se puede "Guardar en Archivos / Descargas" o enviarlo a otra app.
+// • PWA instalada en iOS: <a download> abre un visor sin salida → se usa la hoja de compartir web.
+// • Web de escritorio / Android Chrome / Electron: descarga normal (Electron muestra "Guardar como").
+function isNativeApp() {
+    const cap = window.Capacitor;
+    return !!(cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform());
+}
+
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error || new Error("No se pudo leer el archivo."));
+        reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+        reader.readAsDataURL(blob);
+    });
+}
+
+const isCancel = err => /cancel|abort|dismiss/i.test(String((err && (err.message || err.name)) || err));
+
+async function saveNative(blob, filename) {
+    const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+    const { Filesystem, Share } = plugins;
+    if (!Filesystem || !Share) throw new Error("Plugins nativos no disponibles.");
+    const written = await Filesystem.writeFile({
+        path: filename,
+        data: await blobToBase64(blob), // sin 'encoding' = base64
+        directory: "CACHE",
+        recursive: true
+    });
+    await Share.share({ title: filename, dialogTitle: "Guardar o compartir", files: [written.uri] });
+}
+
+function isIosStandalone() {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    return ios && (window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches);
+}
+
+function saveViaAnchor(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -214,9 +316,22 @@ function downloadBlob(blob, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+async function saveFile(blob, filename) {
+    if (isNativeApp()) {
+        try { return await saveNative(blob, filename); }
+        catch (err) { if (isCancel(err)) return; console.warn("Guardado nativo falló, se intenta descarga normal:", err); }
+    } else if (isIosStandalone() && navigator.canShare) {
+        try {
+            const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+            if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: filename }); return; }
+        } catch (err) { if (isCancel(err)) return; console.warn("navigator.share falló, se intenta descarga normal:", err); }
+    }
+    saveViaAnchor(blob, filename);
+}
+
 function requireJSZip() {
     if (typeof JSZip === "undefined") {
-        alert("❌ No se pudo cargar JSZip (¿sin conexión a internet?). Recarga la página con conexión para generar ZIP/.fnfc.");
+        notify("❌ No se pudo cargar JSZip (vendor/jszip.min.js). Recarga la página o reinstala la app.", "error");
         return false;
     }
     return true;
@@ -416,13 +531,14 @@ async function runConversion() {
     try {
         const res = direction === "inverse" ? await runInverse() : await runForward();
         downloadZipBtn.style.display = "block";
+        // En modo inverso los avisos ya aparecen en el panel derecho; en modo normal se listan aquí.
+        renderWarnings(direction === "forward" ? res.warnings : []);
         fileList.textContent = res.warnings.length
-            ? `✅ Conversión lista con ${res.warnings.length} aviso(s) — revisa el panel derecho / consola.`
+            ? `✅ Conversión lista con ${res.warnings.length} aviso(s) — ${direction === "inverse" ? "revisa el panel derecho" : "revisa los avisos de abajo"}.`
             : "✅ ¡Conversión lista!";
-        if (res.warnings.length && direction === "forward") console.warn(res.warnings.join("\n"));
         return res;
     } catch (err) {
-        alert("❌ Error al convertir: " + err.message);
+        notify("❌ Error al convertir: " + err.message, "error");
         console.error(err);
         fileList.textContent = "❌ " + err.message;
         chartArea.value = "";
@@ -439,40 +555,84 @@ convertBtn.addEventListener("click", runConversion);
 
 downloadZipBtn.addEventListener("click", async () => {
     if (!currentPack || !requireJSZip()) return;
-    const zip = new JSZip();
-    currentPack.files.forEach(f => zip.file(f.name, f.content));
-    const blob = await zip.generateAsync({ type: "blob" });
-    downloadBlob(blob, currentPack.name);
+    downloadZipBtn.disabled = true;
+    try {
+        const zip = new JSZip();
+        currentPack.files.forEach(f => zip.file(f.name, f.content));
+        const blob = await zip.generateAsync({ type: "blob" });
+        await saveFile(blob, currentPack.name);
+    } catch (err) {
+        console.error(err);
+        notify("❌ No se pudo guardar el ZIP: " + err.message, "error");
+    } finally {
+        downloadZipBtn.disabled = false;
+    }
 });
 
 fnfcBtn.addEventListener("click", async () => {
     if (!requireJSZip()) return;
     const instFile = instAudioInput.files[0];
 
+    // Se validan los requisitos ANTES de convertir (antes se convertía primero y el error de
+    // "falta Inst.ogg" aparecía después de haber procesado todo).
     if (selectedFiles.length === 0) {
-        alert("❌ No hay charts cargados. Arrastra o sube los archivos JSON del mapa antes de generar el pack.");
+        notify("❌ No hay charts cargados. Arrastra o sube los archivos JSON del mapa antes de generar el pack.", "error");
         return;
     }
-    // Se reconvierte siempre para reflejar los interruptores actuales (cámara, zoom, álbum, stickers).
-    const res = await runConversion();
-    if (!res) return;
-
     if (!instFile) {
-        alert("❌ Debes subir el audio 'Inst.ogg' — es OBLIGATORIO para el pack .fnfc.");
+        notify("❌ Debes subir el audio 'Inst.ogg' — es OBLIGATORIO para el pack .fnfc.", "error");
+        instAudioInput.focus();
         return;
     }
 
-    const songKey = currentPack.files[0].name.replace(/-chart\.json$/, "") || "song";
+    fnfcBtn.disabled = true;
+    try {
+        // Se reconvierte siempre para reflejar los interruptores actuales (cámara, zoom, álbum, stickers).
+        const res = await runConversion();
+        if (!res) return;
 
-    const zip = new JSZip();
-    zip.file("manifest.json", JSON.stringify({ version: "1.0.0", songId: songKey }, null, 2));
-    currentPack.files.forEach(f => zip.file(f.name, f.content));
-    zip.file("Inst.ogg", instFile);
-    if (plyAudioInput.files[0]) zip.file("Voices-Player.ogg", plyAudioInput.files[0]);
-    if (oppAudioInput.files[0]) zip.file("Voices-Opponent.ogg", oppAudioInput.files[0]);
+        const songKey = currentPack.files[0].name.replace(/-chart\.json$/, "") || "song";
+        const plyFile = plyAudioInput.files[0];
+        const oppFile = oppAudioInput.files[0];
 
-    const blob = await zip.generateAsync({ type: "blob" });
-    downloadBlob(blob, `${songKey}.fnfc`);
+        // La metadata declara voces por defecto; si no se subieron esos audios se quitan,
+        // para que el juego no busque archivos que no existen dentro del .fnfc.
+        const files = currentPack.files.map(f => {
+            if (!f.name.endsWith("-metadata.json")) return f;
+            try {
+                const meta = JSON.parse(f.content);
+                const chars = meta && meta.playData && meta.playData.characters;
+                if (chars) {
+                    if (!plyFile) chars.playerVocals = [];
+                    if (!oppFile) chars.opponentVocals = [];
+                }
+                return { name: f.name, content: JSON.stringify(meta, null, 2) };
+            } catch (err) { return f; }
+        });
+
+        const zip = new JSZip();
+        zip.file("manifest.json", JSON.stringify({ version: "1.0.0", songId: songKey }, null, 2));
+        files.forEach(f => zip.file(f.name, f.content));
+        zip.file("Inst.ogg", instFile);
+        if (plyFile) zip.file("Voices-Player.ogg", plyFile);
+        if (oppFile) zip.file("Voices-Opponent.ogg", oppFile);
+
+        const blob = await zip.generateAsync({ type: "blob" });
+        await saveFile(blob, `${songKey}.fnfc`);
+    } catch (err) {
+        console.error(err);
+        notify("❌ No se pudo generar el .fnfc: " + err.message, "error");
+    } finally {
+        fnfcBtn.disabled = false;
+    }
 });
+
+// ---------------------------------------------------------------- PWA (instalable + offline)
+// Solo en http(s) y fuera de las apps empaquetadas (Electron usa file://, Capacitor ya trae todo local).
+if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && !isNativeApp()) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(err => console.warn("Service worker no registrado:", err));
+    });
+}
 
 refreshLabels();

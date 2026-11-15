@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Chart Converter</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14203a"/><stop offset="1" stop-color="#05070b"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00f0ff"/><stop offset=".55" stop-color="#ff007f"/><stop offset="1" stop-color="#ffea00"/>
+    </linearGradient>
+    <linearGradient id="gA" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00f0ff"/><stop offset="1" stop-color="#00ff66"/>
+    </linearGradient>
+    <linearGradient id="gB" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ff007f"/><stop offset="1" stop-color="#ffea00"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="glowS" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="9"/></filter>
+  </defs>
+<rect width="1024" height="1024" fill="url(#bg)"/><g transform="translate(512 512) scale(0.94) translate(-512 -512)">
+  <g stroke="#ffffff" stroke-opacity=".10" stroke-width="4">
+    <line x1="257" y1="70" x2="257" y2="954"/><line x1="427" y1="70" x2="427" y2="954"/>
+    <line x1="597" y1="70" x2="597" y2="954"/><line x1="767" y1="70" x2="767" y2="954"/>
+  </g>
+
+  <g filter="url(#glowS)" opacity=".85">
+    <rect x="215" y="105" width="84" height="84" rx="26" fill="#ff007f"/>
+    <rect x="385" y="85" width="84" height="84" rx="26" fill="#00f0ff"/>
+    <rect x="409" y="169" width="36" height="100" rx="18" fill="#00f0ff"/>
+    <rect x="555" y="170" width="84" height="84" rx="26" fill="#00ff66"/>
+    <rect x="725" y="100" width="84" height="84" rx="26" fill="#ffea00"/>
+    <rect x="215" y="815" width="84" height="84" rx="26" fill="#ff007f"/>
+    <rect x="385" y="850" width="84" height="84" rx="26" fill="#00f0ff"/>
+    <rect x="555" y="800" width="84" height="84" rx="26" fill="#00ff66"/>
+    <rect x="579" y="884" width="36" height="60" rx="18" fill="#00ff66"/>
+    <rect x="725" y="840" width="84" height="84" rx="26" fill="#ffea00"/>
+</g>
+  <g>
+    <rect x="215" y="105" width="84" height="84" rx="26" fill="#ff007f"/>
+    <rect x="385" y="85" width="84" height="84" rx="26" fill="#00f0ff"/>
+    <rect x="409" y="169" width="36" height="100" rx="18" fill="#00f0ff"/>
+    <rect x="555" y="170" width="84" height="84" rx="26" fill="#00ff66"/>
+    <rect x="725" y="100" width="84" height="84" rx="26" fill="#ffea00"/>
+    <rect x="215" y="815" width="84" height="84" rx="26" fill="#ff007f"/>
+    <rect x="385" y="850" width="84" height="84" rx="26" fill="#00f0ff"/>
+    <rect x="555" y="800" width="84" height="84" rx="26" fill="#00ff66"/>
+    <rect x="579" y="884" width="36" height="60" rx="18" fill="#00ff66"/>
+    <rect x="725" y="840" width="84" height="84" rx="26" fill="#ffea00"/>
+
+    <g fill="#ffffff" fill-opacity=".28">
+      <rect x="227" y="115" width="60" height="22" rx="11"/><rect x="397" y="95" width="60" height="22" rx="11"/>
+      <rect x="567" y="180" width="60" height="22" rx="11"/><rect x="737" y="110" width="60" height="22" rx="11"/>
+      <rect x="227" y="825" width="60" height="22" rx="11"/><rect x="397" y="860" width="60" height="22" rx="11"/>
+      <rect x="567" y="810" width="60" height="22" rx="11"/><rect x="737" y="850" width="60" height="22" rx="11"/>
+    </g>
+</g>
+
+  <g transform="translate(0,-30)" filter="url(#glow)" opacity=".9">
+    <path d="M214,404 H600 V330 L810,452 L600,574 V500 H214 Z" fill="url(#gA)" stroke="url(#gA)" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M810,620 H424 V546 L214,668 L424,790 V716 H810 Z" fill="url(#gB)" stroke="url(#gB)" stroke-width="20" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(0,-30)" stroke-linejoin="round">
+    <path d="M214,404 H600 V330 L810,452 L600,574 V500 H214 Z" fill="#05070b" stroke="#05070b" stroke-width="44"/>
+    <path d="M810,620 H424 V546 L214,668 L424,790 V716 H810 Z" fill="#05070b" stroke="#05070b" stroke-width="44"/>
+    <path d="M214,404 H600 V330 L810,452 L600,574 V500 H214 Z" fill="url(#gA)" stroke="url(#gA)" stroke-width="22"/>
+    <path d="M810,620 H424 V546 L214,668 L424,790 V716 H810 Z" fill="url(#gB)" stroke="url(#gB)" stroke-width="22"/>
+  </g>
+</g>
+</svg>

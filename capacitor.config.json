@@ -1,0 +1,18 @@
+{
+  "appId": "com.panchitomanriquez.chartconverter",
+  "appName": "Chart Converter",
+  "webDir": "www",
+  "backgroundColor": "#030508",
+  "android": {
+    "backgroundColor": "#030508"
+  },
+  "ios": {
+    "backgroundColor": "#030508"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "style": "DARK"
+    }
+  }
+}

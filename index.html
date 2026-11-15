@@ -2,11 +2,27 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Chart Converter | Deiby/PanchitoManriquez</title>
-    <link rel="icon" type="image/png" href="icon.png">
-    <link rel="apple-touch-icon" href="icon.png">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <meta name="description" content="Convierte charts de FNF entre Psych, Kade, Codename y V-Slice (.fnfc). Funciona en Web, Windows, Linux, Android e iOS.">
+    <meta name="theme-color" content="#05070b">
+    <meta name="color-scheme" content="dark">
+
+    <!-- PWA / instalación -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Chart Converter">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Iconos -->
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+    <!-- JSZip va incluido en el repo: funciona sin internet (app de escritorio/móvil, PWA) -->
+    <script src="vendor/jszip.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -124,19 +140,24 @@
             <p>🎚️ <strong>Una salida por dificultad</strong>, con BPM y cambios de BPM reconstruidos desde <code>timeChanges</code>.</p>
         </div>
 
-        <div id="drop-zone">
+        <div id="drop-zone" role="button" tabindex="0" aria-label="Seleccionar archivos">
             <div class="icon">⚡</div>
             <p id="drop-text">¡Suelta tus archivos <span>.json</span> aquí!</p>
             <small id="drop-hint">O haz clic para explorar tus Archivos</small>
         </div>
         
-        <input type="file" id="file-input" accept=".json,.fnfc,.zip,application/json" multiple>
-        
-        <div id="file-list"></div>
-        
+        <!-- Sin atributo accept: en Android/iOS filtrar por extensión (.fnfc, .json) deja archivos
+             en gris o invisibles en el selector. Los tipos válidos se filtran en script.js. -->
+        <input type="file" id="file-input" multiple>
+
+        <div id="file-list" role="status" aria-live="polite"></div>
+        <div id="file-names" class="file-names"></div>
+        <div id="warnings" class="warnings" aria-live="polite"></div>
+
         <div class="action-zone">
-            <button id="convert-btn" class="btn-convert">✨ PROCESAR ARCHIVOS ✨</button>
-            <button id="download-zip-btn" class="btn-download" style="display: none;">🎁 DESCARGAR PACK (.ZIP)</button>
+            <button id="convert-btn" class="btn-convert" type="button">✨ PROCESAR ARCHIVOS ✨</button>
+            <button id="download-zip-btn" class="btn-download" type="button" style="display: none;">🎁 DESCARGAR PACK (.ZIP)</button>
+            <button id="clear-btn" class="btn-clear" type="button" style="display: none;">🗑️ Limpiar selección</button>
         </div>
     </div>
 
@@ -144,14 +165,14 @@
         <div class="editor-box chart-border">
             <div class="editor-header">
                 <span id="chart-title">chart.json</span>
-                <button class="btn-copy" onclick="copyToClipboard('chart-area', this)">📋 Copiar</button>
+                <button class="btn-copy" type="button" data-copy="chart-area">📋 Copiar</button>
             </div>
             <textarea id="chart-area" readonly placeholder="Las notas convertidas aparecerán aquí..."></textarea>
         </div>
         <div class="editor-box meta-border">
             <div class="editor-header">
                 <span id="meta-title">metadata.json</span>
-                <button class="btn-copy" onclick="copyToClipboard('meta-area', this)">📋 Copiar</button>
+                <button class="btn-copy" type="button" data-copy="meta-area">📋 Copiar</button>
             </div>
             <textarea id="meta-area" readonly placeholder="Los metadatos aparecerán aquí..."></textarea>
         </div>
@@ -215,26 +236,28 @@
                 <span class="control-label">Inst.ogg</span>
                 <span class="required-tag">OBLIGATORIO</span>
             </div>
-            <input type="file" id="inst-audio" class="audio-input" accept=".ogg,audio/*">
+            <input type="file" id="inst-audio" class="audio-input" accept=".ogg,audio/*,application/ogg">
         </div>
 
         <div class="option-row">
             <div class="option-control">
                 <span class="control-label">Voices-[Oponente].ogg</span>
             </div>
-            <input type="file" id="opp-audio" class="audio-input" accept=".ogg,audio/*">
+            <input type="file" id="opp-audio" class="audio-input" accept=".ogg,audio/*,application/ogg">
         </div>
 
         <div class="option-row">
             <div class="option-control">
                 <span class="control-label">Voices-[Jugador].ogg</span>
             </div>
-            <input type="file" id="ply-audio" class="audio-input" accept=".ogg,audio/*">
+            <input type="file" id="ply-audio" class="audio-input" accept=".ogg,audio/*,application/ogg">
         </div>
 
-        <button id="fnfc-btn" class="btn-download" style="width: 100%; margin-top: 10px;">💿 GENERAR PACK FNF CLASSIC (.FNFC)</button>
+        <button id="fnfc-btn" class="btn-download" type="button" style="width: 100%; margin-top: 10px;">💿 GENERAR PACK FNF CLASSIC (.FNFC)</button>
         <small class="fnfc-hint">El pack .fnfc incluye tus charts + Inst.ogg (obligatorio) + voces. Solo arrastra los archivos convertidos (primero dale a "✨ PROCESAR ARCHIVOS").</small>
     </div>
+
+    <div id="toast" class="toast" role="alert" aria-live="assertive" hidden></div>
 
     <script src="converter.js"></script>
     <script src="script.js"></script>
