@@ -1,0 +1,30 @@
+name: CI
+
+# Pruebas rápidas en cada push / PR. La compilación de las apps está en build.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sintaxis de los scripts
+        run: |
+          node --check converter.js
+          node --check script.js
+          node --check sw.js
+          node --check electron/main.js
+          node --check scripts/build-web.js
+      - name: Pruebas del convertidor
+        run: npm test
+      - name: Construir carpeta www (la que usa Capacitor)
+        run: node scripts/build-web.js

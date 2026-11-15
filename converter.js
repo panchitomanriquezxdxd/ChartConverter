@@ -12,7 +12,7 @@
     // ------------------------------------------------------------ utilidades
     function parseJson(text) {
         // Quita BOM (muchos editores de Windows lo añaden y JSON.parse revienta).
-        return JSON.parse(String(text).replace(/^﻿/, ""));
+        return JSON.parse(String(text).replace(/^\uFEFF/, ""));
     }
     function toNum(v, fallback) {
         const n = typeof v === "number" ? v : parseFloat(v);
@@ -21,7 +21,9 @@
     const round3 = x => Math.round(x * 1000) / 1000;
     const round4 = x => Math.round(x * 10000) / 10000;
     function slug(s, fb) {
-        const r = String(s == null ? "" : s).toLowerCase().trim()
+        // NFD + quitar marcas: "Ñandú" → "nandu" (antes quedaba "and" porque ñ/ú se descartaban).
+        const r = String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "")
+            .toLowerCase().trim()
             .replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "");
         return r || fb || "song";
     }
@@ -74,6 +76,7 @@
         };
 
         const eventsArr = [];
+        const skippedEvents = new Map(); // nombre → cantidad (eventos sin equivalente en V-Slice)
         const addPsychEvent = (name, v1, t) => {
             if (!Number.isFinite(t)) return;
             const key = String(name == null ? "" : name).toLowerCase().replace(/[^a-z]/g, "");
@@ -82,6 +85,8 @@
                 eventsArr.push({ t, e: "FocusCamera", v: { char: c === 0 ? 0 : (c === 2 ? 2 : 1) } });
             } else if (key.includes("zoom")) {
                 eventsArr.push({ t, e: "ZoomCamera", v: toZoom(key, v1) });
+            } else if (key) {
+                skippedEvents.set(String(name), (skippedEvents.get(String(name)) || 0) + 1);
             }
         };
 
@@ -160,6 +165,12 @@
         });
 
         notesArr.sort((a, b) => a.t - b.t);
+
+        if (skippedEvents.size) {
+            const total = [...skippedEvents.values()].reduce((a, b) => a + b, 0);
+            const names = [...skippedEvents.keys()].slice(0, 6).join(", ");
+            warnings.push(`${total} evento(s) sin equivalente en V-Slice omitidos (${names}${skippedEvents.size > 6 ? ", …" : ""}).`);
+        }
 
         const name = song.song || (file && file.name ? songKeyFromFile(file.name) : "Unknown");
         return {

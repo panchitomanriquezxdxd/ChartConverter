@@ -1,0 +1,13 @@
+# Dependencias y salidas de compilación
+node_modules/
+dist/
+www/
+
+# Proyectos nativos: se generan en cada build con `npx cap add android|ios` (ver .github/workflows)
+android/
+ios/
+
+# Varios
+.DS_Store
+Thumbs.db
+*.log
