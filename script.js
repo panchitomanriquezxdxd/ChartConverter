@@ -359,6 +359,17 @@ async function runForward() {
     const activeDifficulties = [];
     const warnings = [];
     const seenEvents = new Set();
+    const eventFiles = [];
+
+    // Los eventos de V-Slice son globales: se deduplican entre dificultades y archivos.
+    const addEvents = list => list.forEach(ev => {
+        if (ev.e === "FocusCamera" && !cameraToggle.checked) return;
+        if (ev.e === "ZoomCamera" && !zoomToggle.checked) return;
+        const k = `${ev.t}|${ev.e}|${JSON.stringify(ev.v)}`;
+        if (seenEvents.has(k)) return;
+        seenEvents.add(k);
+        finalChart.events.push(ev);
+    });
 
     for (const file of selectedFiles) {
         let rawData;
@@ -366,6 +377,19 @@ async function runForward() {
             rawData = CC.parseJson(await file.text());
         } catch (err) {
             throw new Error(`"${file.name}" no es un JSON válido (${err.message}).`);
+        }
+
+        // events.json de Psych: aporta eventos a toda la canción, no es una dificultad.
+        if (!isCodename && CC.isPsychEventsFile(file.name)) {
+            let ev;
+            try {
+                ev = CC.convertPsychEventsFile(rawData);
+            } catch (err) {
+                throw new Error(`"${file.name}": ${err.message}`);
+            }
+            eventFiles.push(ev.eventsArr);
+            warnings.push(...ev.warnings.map(w => `${file.name}: ${w}`));
+            continue;
         }
 
         let result;
@@ -387,20 +411,19 @@ async function runForward() {
         warnings.push(...result.warnings.map(w => `${file.name}: ${w}`));
         if (!result.notesArr.length) warnings.push(`${file.name}: no se encontró ninguna nota; revisa que el modo de origen sea el correcto.`);
 
-        // Los eventos de V-Slice son globales: se deduplican entre dificultades.
-        result.eventsArr.forEach(ev => {
-            if (ev.e === "FocusCamera" && !cameraToggle.checked) return;
-            if (ev.e === "ZoomCamera" && !zoomToggle.checked) return;
-            const k = `${ev.t}|${ev.e}|${JSON.stringify(ev.v)}`;
-            if (seenEvents.has(k)) return;
-            seenEvents.add(k);
-            finalChart.events.push(ev);
-        });
+        addEvents(result.eventsArr);
 
         if (!finalMeta) {
             finalMeta = { result };
         }
     }
+
+    if (!finalMeta) {
+        throw new Error(eventFiles.length
+            ? "Solo subiste events.json. Agrega también el chart de la canción (por ejemplo cancion-hard.json)."
+            : "No hay ningún chart para convertir.");
+    }
+    eventFiles.forEach(addEvents); // al final, para que cuenten aunque events.json se haya subido primero
 
     const r = finalMeta.result;
     const meta = CC.buildVSliceMeta({

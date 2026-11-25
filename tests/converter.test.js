@@ -210,3 +210,26 @@ test("buildVSliceMeta ordena las dificultades de fácil a difícil", () => {
     const m = CC.buildVSliceMeta({ songName: "S", difficulties: ["hard", "easy", "normal"] });
     assert.deepEqual(m.playData.difficulties, ["easy", "normal", "hard"]);
 });
+
+// ---- events.json de Psych
+test("events.json: se reconoce por nombre y solo aporta eventos (sin FocusCamera de secciones vacías)", () => {
+    assert.ok(CC.isPsychEventsFile("events.json"));
+    assert.ok(CC.isPsychEventsFile("Eventos/Events.JSON"));
+    assert.ok(!CC.isPsychEventsFile("events-hard.json") && !CC.isPsychEventsFile("song.json"));
+    const raw = { song: {
+        song: "Test", notes: [{ sectionNotes: [], mustHitSection: false }, { sectionNotes: [], mustHitSection: true }],
+        events: [[1000, [["Add Camera Zoom", "0.03", "0.03"], ["Hey!", "1", "0.6"]]], [2000, [["FocusCamera", "1", ""]]], [3000, [["Add Camera Zoom", "", ""]]]]
+    } };
+    const r = CC.convertPsychEventsFile(raw);
+    assert.deepEqual(r.eventsArr.map(e => [e.t, e.e]), [[1000, "ZoomCamera"], [2000, "FocusCamera"], [3000, "ZoomCamera"]]);
+    assert.equal(r.eventsArr[0].v.zoom, 1.03);
+    assert.equal(r.eventsArr[2].v.zoom, 1.015); // valor vacío = 0.015 por defecto
+    assert.equal(r.eventsArr[1].v.char, 1);
+    assert.ok(r.warnings.some(w => /Hey!/.test(w)));
+});
+
+test("events.json: acepta 'events' en la raíz y falla con un mensaje claro si no hay eventos", () => {
+    const r = CC.convertPsychEventsFile({ events: [[500, [["Add Camera Zoom", "0.05", ""]]]], notes: [] });
+    assert.equal(r.eventsArr.length, 1);
+    assert.throws(() => CC.convertPsychEventsFile({ song: { notes: [] } }), /events/);
+});

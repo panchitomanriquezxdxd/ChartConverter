@@ -52,6 +52,70 @@
         return b;
     }
 
+    // ------------------------------------------------------------ eventos de Psych (chart y events.json)
+    // Convierte eventos de Psych a eventos V-Slice. Lo comparten los charts y el archivo events.json.
+    function createPsychEventCollector() {
+        const eventsArr = [];
+        const skippedEvents = new Map(); // nombre → cantidad (eventos sin equivalente en V-Slice)
+        const toZoom = (key, value) => {
+            // "Add Camera Zoom" suma (0.015 por defecto) → zoom relativo al stage = 1 + valor.
+            // El resto de eventos "zoom" llevan el zoom absoluto.
+            const zoom = key === "addcamerazoom" ? 1 + toNum(value, 0.015) : toNum(value, 1);
+            return { ease: "expoInOut", duration: 4, mode: "stage", zoom: round4(zoom) };
+        };
+        const add = (name, v1, t) => {
+            if (!Number.isFinite(t)) return;
+            const key = String(name == null ? "" : name).toLowerCase().replace(/[^a-z]/g, "");
+            if (key === "focuscamera") {
+                const c = parseInt(v1, 10);
+                eventsArr.push({ t, e: "FocusCamera", v: { char: c === 0 ? 0 : (c === 2 ? 2 : 1) } });
+            } else if (key.includes("zoom")) {
+                eventsArr.push({ t, e: "ZoomCamera", v: toZoom(key, v1) });
+            } else if (key) {
+                skippedEvents.set(String(name), (skippedEvents.get(String(name)) || 0) + 1);
+            }
+        };
+        return { eventsArr, skippedEvents, add };
+    }
+
+    // Formato de Psych: [[tiempo, [[nombre, v1, v2], ...]], ...]
+    function collectPsychEventGroups(list, add) {
+        if (!Array.isArray(list)) return;
+        list.forEach(group => {
+            if (!Array.isArray(group)) return;
+            const evTime = toNum(group[0], NaN);
+            if (Array.isArray(group[1])) {
+                group[1].forEach(sub => { if (Array.isArray(sub)) add(sub[0], sub[1], evTime); });
+            }
+        });
+    }
+
+    function skippedEventsWarning(skippedEvents) {
+        if (!skippedEvents.size) return null;
+        const total = [...skippedEvents.values()].reduce((a, b) => a + b, 0);
+        const names = [...skippedEvents.keys()].slice(0, 6).join(", ");
+        return `${total} evento(s) sin equivalente en V-Slice omitidos (${names}${skippedEvents.size > 6 ? ", …" : ""}).`;
+    }
+
+    // events.json de Psych (0.6.3 / 0.7 / 1.0): solo se toman los eventos. Las secciones de ese archivo
+    // van vacías y NO deben convertirse en una dificultad ni generar FocusCamera.
+    function isPsychEventsFile(name) {
+        return baseName(name).toLowerCase() === "events";
+    }
+    function convertPsychEventsFile(rawData) {
+        const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
+        const list = (rawData && Array.isArray(rawData.events)) ? rawData.events : (song && song.events);
+        if (!Array.isArray(list)) {
+            throw new Error("No se encontró el array 'events' (events.json de Psych).");
+        }
+        const { eventsArr, skippedEvents, add } = createPsychEventCollector();
+        collectPsychEventGroups(list, add);
+        const warnings = [];
+        const skipped = skippedEventsWarning(skippedEvents);
+        if (skipped) warnings.push(skipped);
+        return { eventsArr, warnings };
+    }
+
     // ------------------------------------------------------------ PSYCH / KADE → V SLICE
     // psychMode: "auto" | "063" (legacy/Kade) | "073" | "104" (psych_v1 absoluto; pslice usa "104")
     function convertPsychToVSlice(rawData, file, psychMode) {
@@ -75,27 +139,7 @@
             return (raw % 4) + (isPlayer ? 0 : 4);
         };
 
-        const toZoom = (key, value) => {
-            // "Add Camera Zoom" suma (0.015 por defecto) → zoom relativo al stage = 1 + valor.
-            // El resto de eventos "zoom" llevan el zoom absoluto.
-            const zoom = key === "addcamerazoom" ? 1 + toNum(value, 0.015) : toNum(value, 1);
-            return { ease: "expoInOut", duration: 4, mode: "stage", zoom: round4(zoom) };
-        };
-
-        const eventsArr = [];
-        const skippedEvents = new Map(); // nombre → cantidad (eventos sin equivalente en V-Slice)
-        const addPsychEvent = (name, v1, t) => {
-            if (!Number.isFinite(t)) return;
-            const key = String(name == null ? "" : name).toLowerCase().replace(/[^a-z]/g, "");
-            if (key === "focuscamera") {
-                const c = parseInt(v1, 10);
-                eventsArr.push({ t, e: "FocusCamera", v: { char: c === 0 ? 0 : (c === 2 ? 2 : 1) } });
-            } else if (key.includes("zoom")) {
-                eventsArr.push({ t, e: "ZoomCamera", v: toZoom(key, v1) });
-            } else if (key) {
-                skippedEvents.set(String(name), (skippedEvents.get(String(name)) || 0) + 1);
-            }
-        };
+        const { eventsArr, skippedEvents, add: addPsychEvent } = createPsychEventCollector();
 
         // Eventos inline en sectionNotes (Psych 0.7+/1.0):
         //  [time, "Nombre", v1, v2]  |  [time, -1, "Nombre", v1, v2]
@@ -109,16 +153,7 @@
         };
 
         // Eventos de song.events: [[time, [[nombre, v1, v2], ...]], ...]
-        const psychEvents = (rawData && rawData.events) || song.events;
-        if (Array.isArray(psychEvents)) {
-            psychEvents.forEach(group => {
-                if (!Array.isArray(group)) return;
-                const evTime = toNum(group[0], NaN);
-                if (Array.isArray(group[1])) {
-                    group[1].forEach(sub => { if (Array.isArray(sub)) addPsychEvent(sub[0], sub[1], evTime); });
-                }
-            });
-        }
+        collectPsychEventGroups((rawData && rawData.events) || song.events, addPsychEvent);
 
         const baseBpm = toNum(song.bpm, 100) > 0 ? toNum(song.bpm, 100) : 100;
         let bpm = baseBpm;
@@ -173,11 +208,8 @@
 
         notesArr.sort((a, b) => a.t - b.t);
 
-        if (skippedEvents.size) {
-            const total = [...skippedEvents.values()].reduce((a, b) => a + b, 0);
-            const names = [...skippedEvents.keys()].slice(0, 6).join(", ");
-            warnings.push(`${total} evento(s) sin equivalente en V-Slice omitidos (${names}${skippedEvents.size > 6 ? ", …" : ""}).`);
-        }
+        const skippedWarning = skippedEventsWarning(skippedEvents);
+        if (skippedWarning) warnings.push(skippedWarning);
 
         const name = song.song || (file && file.name ? songKeyFromFile(file.name) : "Unknown");
         return {
@@ -584,7 +616,7 @@
 
     const api = {
         GENERATED_BY, parseJson, getDiff, songKeyFromFile, slug, baseName,
-        convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget
+        isPsychEventsFile, convertPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget
     };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     root.ChartConverter = api;
