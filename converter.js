@@ -53,29 +53,74 @@
     }
 
     // ------------------------------------------------------------ eventos de Psych (chart y events.json)
-    // Convierte eventos de Psych a eventos V-Slice. Lo comparten los charts y el archivo events.json.
+    // Los eventos se acumulan "crudos" y se convierten al final (build): algunos necesitan saber el BPM de
+    // ese momento (Change Scroll Speed) o la cámara de cada sección (Camera Follow Pos).
+    //   FocusCamera / Camera Follow Pos → FocusCamera      Add Camera Zoom (y similares) → ZoomCamera
+    //   Hey! / Play Animation           → PlayAnimation    Change Scroll Speed           → ScrollSpeed
     function createPsychEventCollector() {
-        const eventsArr = [];
-        const skippedEvents = new Map(); // nombre → cantidad (eventos sin equivalente en V-Slice)
+        const raw = []; // { name, v1, v2, t }
+        const add = (name, v1, t, v2) => { if (Number.isFinite(t)) raw.push({ name, v1, v2, t }); };
         const toZoom = (key, value) => {
             // "Add Camera Zoom" suma (0.015 por defecto) → zoom relativo al stage = 1 + valor.
             // El resto de eventos "zoom" llevan el zoom absoluto.
             const zoom = key === "addcamerazoom" ? 1 + toNum(value, 0.015) : toNum(value, 1);
             return { ease: "expoInOut", duration: 4, mode: "stage", zoom: round4(zoom) };
         };
-        const add = (name, v1, t) => {
-            if (!Number.isFinite(t)) return;
-            const key = String(name == null ? "" : name).toLowerCase().replace(/[^a-z]/g, "");
-            if (key === "focuscamera") {
-                const c = parseInt(v1, 10);
-                eventsArr.push({ t, e: "FocusCamera", v: { char: c === 0 ? 0 : (c === 2 ? 2 : 1) } });
-            } else if (key.includes("zoom")) {
-                eventsArr.push({ t, e: "ZoomCamera", v: toZoom(key, v1) });
-            } else if (key) {
-                skippedEvents.set(String(name), (skippedEvents.get(String(name)) || 0) + 1);
-            }
+        const str = v => String(v == null ? "" : v).trim();
+
+        const build = ctx => {
+            const bpmAt = (ctx && ctx.bpmAt) || (() => 100);
+            const eventsArr = [];
+            const followPos = []; // Camera Follow Pos: se resuelve junto con la cámara de las secciones
+            const skippedEvents = new Map(); // nombre → cantidad (eventos sin equivalente en V-Slice)
+            const play = (t, target, anim) => eventsArr.push({ t, e: "PlayAnimation", v: { target, anim, force: true } });
+
+            raw.forEach(({ name, v1, v2, t }) => {
+                const key = str(name).toLowerCase().replace(/[^a-z]/g, "");
+                const s1 = str(v1), s2 = str(v2);
+                if (key === "focuscamera") {
+                    const c = parseInt(v1, 10);
+                    eventsArr.push({ t, e: "FocusCamera", v: { char: c === 0 ? 0 : (c === 2 ? 2 : 1) } });
+                } else if (key === "camerafollowpos") {
+                    // Con x/y la cámara queda fija en esa posición; sin valores vuelve a seguir a los personajes.
+                    const x = parseFloat(s1), y = parseFloat(s2);
+                    if (Number.isNaN(x) && Number.isNaN(y)) followPos.push({ t, reset: true });
+                    else followPos.push({ t, x: Number.isNaN(x) ? 0 : x, y: Number.isNaN(y) ? 0 : y });
+                } else if (key === "hey") {
+                    // value1: bf / gf / ambos (por defecto). El BF hace "hey" y la GF "cheer".
+                    const who = s1.toLowerCase();
+                    const bfOnly = who === "bf" || who === "boyfriend" || who === "0";
+                    const gfOnly = who === "gf" || who === "girlfriend" || who === "1";
+                    if (!gfOnly) play(t, "boyfriend", "hey");
+                    if (!bfOnly) play(t, "girlfriend", "cheer");
+                } else if (key === "playanimation") {
+                    // value1 = animación; value2 = personaje (dad por defecto; 0 dad, 1 bf, 2 gf; o bf/gf).
+                    const who = s2.toLowerCase();
+                    let target = "dad";
+                    if (who === "bf" || who === "boyfriend") target = "boyfriend";
+                    else if (who === "gf" || who === "girlfriend") target = "girlfriend";
+                    else if (parseInt(who, 10) === 1) target = "boyfriend";
+                    else if (parseInt(who, 10) === 2) target = "girlfriend";
+                    if (s1) play(t, target, s1);
+                    else skippedEvents.set("Play Animation", (skippedEvents.get("Play Animation") || 0) + 1);
+                } else if (key === "changescrollspeed") {
+                    // value1 = multiplicador de la velocidad del chart; value2 = duración en SEGUNDOS (0 = al instante).
+                    let mult = parseFloat(s1);
+                    if (!Number.isFinite(mult)) mult = 1;
+                    let sec = parseFloat(s2);
+                    if (!Number.isFinite(sec) || sec < 0) sec = 0;
+                    const v = { scroll: round4(mult), duration: 0, ease: "INSTANT", absolute: false, strumline: "both" };
+                    if (sec > 0) { v.duration = round4(sec * bpmAt(t) / 15); v.ease = "linear"; } // V-Slice usa steps (1 step = 15000/bpm ms)
+                    eventsArr.push({ t, e: "ScrollSpeed", v });
+                } else if (key.includes("zoom")) {
+                    eventsArr.push({ t, e: "ZoomCamera", v: toZoom(key, v1) });
+                } else if (key) {
+                    skippedEvents.set(String(name), (skippedEvents.get(String(name)) || 0) + 1);
+                }
+            });
+            return { eventsArr, followPos, skippedEvents };
         };
-        return { eventsArr, skippedEvents, add };
+        return { add, build };
     }
 
     // Formato de Psych: [[tiempo, [[nombre, v1, v2], ...]], ...]
@@ -85,8 +130,43 @@
             if (!Array.isArray(group)) return;
             const evTime = toNum(group[0], NaN);
             if (Array.isArray(group[1])) {
-                group[1].forEach(sub => { if (Array.isArray(sub)) add(sub[0], sub[1], evTime); });
+                group[1].forEach(sub => { if (Array.isArray(sub)) add(sub[0], sub[1], evTime, sub[2]); });
             }
+        });
+    }
+
+    // Psych deja la cámara FIJA con "Camera Follow Pos" (aunque cambie la sección) hasta que se llama otra vez sin
+    // valores; entonces vuelve a seguir al personaje en el siguiente inicio de sección. V-Slice lo expresa con
+    // FocusCamera char -1 (x, y): se omiten los cambios de cámara de las secciones mientras esté fija y, al soltarla,
+    // se enfoca al personaje de la sección que sigue.
+    function resolveCameraFocus(followPos, sectionFocus, sectionStarts) {
+        const out = [];
+        const intervals = [];
+        let start = null;
+        followPos.slice().sort((a, b) => a.t - b.t).forEach(fp => {
+            if (fp.reset) {
+                if (start === null) return;
+                intervals.push([start, fp.t]);
+                start = null;
+                const next = sectionStarts.find(s => s.t >= fp.t);
+                if (next) out.push({ t: next.t, e: "FocusCamera", v: { char: next.char } });
+            } else {
+                out.push({ t: fp.t, e: "FocusCamera", v: { char: -1, x: round4(fp.x), y: round4(fp.y) } });
+                if (start === null) start = fp.t;
+            }
+        });
+        if (start !== null) intervals.push([start, Infinity]);
+        sectionFocus.forEach(ev => { if (!intervals.some(([a, b]) => ev.t >= a && ev.t <= b)) out.push(ev); });
+        return out;
+    }
+
+    function dedupeEvents(list) {
+        const seen = new Set();
+        return list.filter(ev => {
+            const k = `${ev.t}|${ev.e}|${JSON.stringify(ev.v)}`;
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
         });
     }
 
@@ -98,28 +178,26 @@
     }
 
     // events.json de Psych (0.6.3 / 0.7 / 1.0): solo se toman los eventos. Las secciones de ese archivo
-    // van vacías y NO deben convertirse en una dificultad ni generar FocusCamera.
+    // van vacías y NO deben convertirse en una dificultad ni generar FocusCamera. Sus eventos se pasan a
+    // convertPsychToVSlice (opts.extraEvents) para convertirlos junto con el BPM y la cámara del chart.
     function isPsychEventsFile(name) {
         return baseName(name).toLowerCase() === "events";
     }
-    function convertPsychEventsFile(rawData) {
+    function readPsychEventsFile(rawData) {
         const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
         const list = (rawData && Array.isArray(rawData.events)) ? rawData.events : (song && song.events);
         if (!Array.isArray(list)) {
             throw new Error("No se encontró el array 'events' (events.json de Psych).");
         }
-        const { eventsArr, skippedEvents, add } = createPsychEventCollector();
-        collectPsychEventGroups(list, add);
-        const warnings = [];
-        const skipped = skippedEventsWarning(skippedEvents);
-        if (skipped) warnings.push(skipped);
-        return { eventsArr, warnings };
+        return list;
     }
 
     // ------------------------------------------------------------ PSYCH / KADE → V SLICE
     // psychMode: "auto" | "063" (legacy/Kade) | "073" | "104" (psych_v1 absoluto; pslice usa "104")
-    function convertPsychToVSlice(rawData, file, psychMode) {
+    // opts.extraEvents: lista de eventos [[t, [[nombre, v1, v2]]]] de un events.json de Psych (se suman a los del chart).
+    function convertPsychToVSlice(rawData, file, psychMode, opts) {
         psychMode = psychMode || "auto";
+        opts = opts || {};
         const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
 
         if (!song || !Array.isArray(song.notes)) {
@@ -139,21 +217,25 @@
             return (raw % 4) + (isPlayer ? 0 : 4);
         };
 
-        const { eventsArr, skippedEvents, add: addPsychEvent } = createPsychEventCollector();
+        const collector = createPsychEventCollector();
+        const addPsychEvent = collector.add;
+        const sectionFocus = [];  // cambios de cámara que implican las secciones (mustHitSection / gfSection)
+        const sectionStarts = []; // enfoque de CADA sección (para volver a seguir al personaje tras Camera Follow Pos)
 
         // Eventos inline en sectionNotes (Psych 0.7+/1.0):
         //  [time, "Nombre", v1, v2]  |  [time, -1, "Nombre", v1, v2]
         const extractInline = note => {
             if (note.length < 2) return null;
-            if (typeof note[1] === "string") return { name: note[1], v1: note[2], t: toNum(note[0], NaN) };
+            if (typeof note[1] === "string") return { name: note[1], v1: note[2], v2: note[3], t: toNum(note[0], NaN) };
             if (typeof note[1] === "number" && note[1] < 0 && typeof note[2] === "string") {
-                return { name: note[2], v1: note[3], t: toNum(note[0], NaN) };
+                return { name: note[2], v1: note[3], v2: note[4], t: toNum(note[0], NaN) };
             }
             return null;
         };
 
-        // Eventos de song.events: [[time, [[nombre, v1, v2], ...]], ...]
+        // Eventos de song.events: [[time, [[nombre, v1, v2], ...]], ...]  (+ los de un events.json aparte)
         collectPsychEventGroups((rawData && rawData.events) || song.events, addPsychEvent);
+        collectPsychEventGroups(opts.extraEvents, addPsychEvent);
 
         const baseBpm = toNum(song.bpm, 100) > 0 ? toNum(song.bpm, 100) : 100;
         let bpm = baseBpm;
@@ -177,8 +259,9 @@
             }
 
             const focusChar = sec.gfSection ? 2 : (sec.mustHitSection ? 0 : 1);
+            sectionStarts.push({ t: Math.round(currentTime), char: focusChar });
             if (focusChar !== lastFocus) {
-                eventsArr.push({ t: Math.round(currentTime), e: "FocusCamera", v: { char: focusChar } });
+                sectionFocus.push({ t: Math.round(currentTime), e: "FocusCamera", v: { char: focusChar } });
                 lastFocus = focusChar;
             }
 
@@ -186,7 +269,7 @@
                 if (!Array.isArray(n)) return;
 
                 const inline = extractInline(n);
-                if (inline) { addPsychEvent(inline.name, inline.v1, inline.t); return; }
+                if (inline) { addPsychEvent(inline.name, inline.v1, inline.t, inline.v2); return; }
 
                 const t = toNum(n[0], NaN);
                 const rawLane = toNum(n[1], NaN);
@@ -208,7 +291,14 @@
 
         notesArr.sort((a, b) => a.t - b.t);
 
-        const skippedWarning = skippedEventsWarning(skippedEvents);
+        // Ya se conocen los cambios de BPM y la cámara de cada sección: se convierten los eventos.
+        const bpmAt = t => { let b = timeChanges[0].bpm; for (const tc of timeChanges) { if (tc.t <= t) b = tc.bpm; else break; } return b; };
+        const built = collector.build({ bpmAt });
+        const eventsArr = dedupeEvents(built.eventsArr
+            .concat(resolveCameraFocus(built.followPos, sectionFocus, sectionStarts))
+            .sort((a, b) => a.t - b.t));
+
+        const skippedWarning = skippedEventsWarning(built.skippedEvents);
         if (skippedWarning) warnings.push(skippedWarning);
 
         const name = song.song || (file && file.name ? songKeyFromFile(file.name) : "Unknown");
@@ -429,11 +519,23 @@
             .sort((a, b) => a.t - b.t);
         // FocusCamera solo tiene equivalente para char 0 (jugador), 1 (oponente) y 2 (GF). Con char -1 / sin char
         // la cámara va a una posición fija (x, y): antes se contaba como "oponente" y desordenaba las secciones.
+        const isCodename = target === "codename";
+        const isV1 = target === "psych_v1";
+        const isKade = target === "kade";
+        const isPsych = !isCodename && !isKade; // Psych legacy / v1: admiten eventos en el chart
         const allFocus = camera ? allEvents.filter(e => e.e === "FocusCamera")
-            .map(e => ({ t: e.t, c: toNum(e.v.char, NaN) })) : [];
-        const focusEvents = allFocus.filter(f => f.c === 0 || f.c === 1 || f.c === 2);
+            .map(e => ({ t: e.t, c: toNum(e.v.char, NaN), x: toNum(e.v.x, 0), y: toNum(e.v.y, 0) })) : [];
+        const isCharFocus = f => f.c === 0 || f.c === 1 || f.c === 2;
+        const focusEvents = allFocus.filter(isCharFocus);
+        // Cámara fija (char -1, x, y) → "Camera Follow Pos" de Psych; al volver a un personaje se "suelta" (valores vacíos).
+        const camFollow = [];
+        let camWasFixed = false;
+        allFocus.forEach(f => {
+            if (isCharFocus(f)) { if (camWasFixed) camFollow.push({ t: f.t, reset: true }); camWasFixed = false; }
+            else { camFollow.push({ t: f.t, x: f.x, y: f.y }); camWasFixed = true; }
+        });
         const fixedFocus = allFocus.length - focusEvents.length;
-        if (fixedFocus) warnings.push(`${fixedFocus} FocusCamera con posición fija (sin personaje) omitidos: no tienen equivalente.`);
+        if (fixedFocus && !isPsych) warnings.push(`${fixedFocus} FocusCamera con posición fija (sin personaje) omitidos: este formato no tiene equivalente.`);
         const zoomEvents = zoomOn ? allEvents.filter(e => e.e === "ZoomCamera") : [];
         // V-Slice puede traer solo "default" en scrollSpeed (sin una entrada por dificultad).
         const speedFor = diff => {
@@ -444,17 +546,14 @@
             const def = ss && typeof ss === "object" ? toNum(ss.default, NaN) : NaN;
             return Number.isFinite(def) ? def : 1;
         };
-        const otherEvents = allEvents.filter(e => e.e !== "FocusCamera" && e.e !== "ZoomCamera");
+        const handled = isPsych ? ["FocusCamera", "ZoomCamera", "PlayAnimation", "ScrollSpeed"] : ["FocusCamera", "ZoomCamera"];
+        const otherEvents = allEvents.filter(e => !handled.includes(e.e));
         if (otherEvents.length) {
             const names = [...new Set(otherEvents.map(e => e.e))].slice(0, 6).join(", ");
             warnings.push(`${otherEvents.length} evento(s) sin equivalente omitidos (${names}).`);
         }
 
         const files = [];
-        const isCodename = target === "codename";
-        const isV1 = target === "psych_v1";
-        const isKade = target === "kade";
-
         // Lane inversa (exacta respecto a la conversión normal)
         const encodeLane = (d, mustHit) => {
             const lane = ((Math.round(d) % 8) + 8) % 8;
@@ -471,7 +570,7 @@
         };
 
         const diffNames = {};
-        let lostFocus = 0, approxZoom = 0;
+        let lostFocus = 0, approxZoom = 0, approxScroll = 0, skippedAnim = 0;
 
         diffs.forEach(diff => {
             const notes = (Array.isArray(notesByDiff[diff]) ? notesByDiff[diff] : [])
@@ -549,6 +648,33 @@
                     else if (firstDiff) lostFocus++;
                 }
             });
+            if (isPsych) {
+                camFollow.forEach(c => pushEv(c.t, "Camera Follow Pos", c.reset ? "" : round4(c.x), c.reset ? "" : round4(c.y)));
+
+                const bpmAt = t => { let b = tcs[0].bpm; for (const tc of tcs) { if (tc.t <= t) b = tc.bpm; else break; } return b; };
+                allEvents.forEach(e => {
+                    if (e.e === "ScrollSpeed") {
+                        // Psych: value1 = multiplicador del chart; value2 = duración en segundos (V-Slice usa steps).
+                        const absolute = e.v.absolute === true;
+                        const scroll = toNum(e.v.scroll, 1);
+                        const mult = absolute ? (speed > 0 ? scroll / speed : 1) : scroll;
+                        const instant = String(e.v.ease || "").toUpperCase() === "INSTANT";
+                        const secs = instant ? 0 : toNum(e.v.duration, 4) * 15 / bpmAt(e.t);
+                        pushEv(e.t, "Change Scroll Speed", round4(mult), round4(secs));
+                        if (firstDiff && e.v.strumline && e.v.strumline !== "both") approxScroll++;
+                    } else if (e.e === "PlayAnimation") {
+                        const anim = String(e.v.anim == null ? "" : e.v.anim);
+                        const who = String(e.v.target == null ? "" : e.v.target).toLowerCase();
+                        const psychWho = ["boyfriend", "bf", "player"].includes(who) ? "bf"
+                            : ["girlfriend", "gf"].includes(who) ? "gf"
+                            : ["dad", "opponent"].includes(who) ? "dad" : null;
+                        if (!anim || !psychWho) { if (firstDiff) skippedAnim++; return; }
+                        if (psychWho === "bf" && anim === "hey") pushEv(e.t, "Hey!", "bf", "");
+                        else if (psychWho === "gf" && anim === "cheer") pushEv(e.t, "Hey!", "gf", "");
+                        else pushEv(e.t, "Play Animation", anim, psychWho);
+                    }
+                });
+            }
             // Kade no tiene eventos en el chart: los zooms se descartan (antes sin avisar).
             if (!isKade) {
                 zoomEvents.forEach(z => {
@@ -603,6 +729,8 @@
 
         if (lostFocus) warnings.push(`${lostFocus} cambio(s) de cámara a mitad de sección no caben en el formato legacy (se ajustan al inicio de la sección).`);
         if (approxZoom) warnings.push(`${approxZoom} ZoomCamera en modo 'direct' aproximados como 'Add Camera Zoom'.`);
+        if (approxScroll) warnings.push(`${approxScroll} ScrollSpeed de un solo lado (jugador u oponente): Psych lo aplica a ambos.`);
+        if (skippedAnim) warnings.push(`${skippedAnim} PlayAnimation omitidos: sin animación o sobre un personaje que no es bf/dad/gf.`);
 
         if (isCodename) {
             files.push({
@@ -616,7 +744,7 @@
 
     const api = {
         GENERATED_BY, parseJson, getDiff, songKeyFromFile, slug, baseName,
-        isPsychEventsFile, convertPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget
+        isPsychEventsFile, readPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget
     };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     root.ChartConverter = api;

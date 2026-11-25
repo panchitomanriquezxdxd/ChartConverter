@@ -359,7 +359,13 @@ async function runForward() {
     const activeDifficulties = [];
     const warnings = [];
     const seenEvents = new Set();
-    const eventFiles = [];
+    const seenWarnings = new Set();
+    const pushWarnings = (file, list) => list.forEach(w => {
+        // Mismo aviso en varias dificultades (p. ej. un evento sin equivalente de events.json): una sola vez.
+        if (seenWarnings.has(w)) return;
+        seenWarnings.add(w);
+        warnings.push(`${file.name}: ${w}`);
+    });
 
     // Los eventos de V-Slice son globales: se deduplican entre dificultades y archivos.
     const addEvents = list => list.forEach(ev => {
@@ -371,6 +377,10 @@ async function runForward() {
         finalChart.events.push(ev);
     });
 
+    // 1) Se leen todos los archivos. events.json de Psych no es una dificultad: aporta eventos a la canción
+    //    entera y se convierte junto a cada chart (necesita su BPM y sus secciones), sin importar el orden de subida.
+    const charts = [];
+    let extraEvents = [];
     for (const file of selectedFiles) {
         let rawData;
         try {
@@ -378,25 +388,29 @@ async function runForward() {
         } catch (err) {
             throw new Error(`"${file.name}" no es un JSON válido (${err.message}).`);
         }
-
-        // events.json de Psych: aporta eventos a toda la canción, no es una dificultad.
         if (!isCodename && CC.isPsychEventsFile(file.name)) {
-            let ev;
             try {
-                ev = CC.convertPsychEventsFile(rawData);
+                extraEvents = extraEvents.concat(CC.readPsychEventsFile(rawData));
             } catch (err) {
                 throw new Error(`"${file.name}": ${err.message}`);
             }
-            eventFiles.push(ev.eventsArr);
-            warnings.push(...ev.warnings.map(w => `${file.name}: ${w}`));
-            continue;
+        } else {
+            charts.push({ file, rawData });
         }
+    }
+    if (!charts.length) {
+        throw new Error(extraEvents.length
+            ? "Solo subiste events.json. Agrega también el chart de la canción (por ejemplo cancion-hard.json)."
+            : "No hay ningún chart para convertir.");
+    }
 
+    // 2) Conversión de cada chart
+    for (const { file, rawData } of charts) {
         let result;
         try {
             result = isCodename
                 ? CC.convertCodenameToVSlice(rawData)
-                : CC.convertPsychToVSlice(rawData, file, psychModeFor(converterMode));
+                : CC.convertPsychToVSlice(rawData, file, psychModeFor(converterMode), { extraEvents });
         } catch (err) {
             throw new Error(`"${file.name}": ${err.message}`);
         }
@@ -408,7 +422,7 @@ async function runForward() {
 
         finalChart.scrollSpeed[diff] = result.speed;
         finalChart.notes[diff] = result.notesArr;
-        warnings.push(...result.warnings.map(w => `${file.name}: ${w}`));
+        pushWarnings(file, result.warnings);
         if (!result.notesArr.length) warnings.push(`${file.name}: no se encontró ninguna nota; revisa que el modo de origen sea el correcto.`);
 
         addEvents(result.eventsArr);
@@ -417,13 +431,6 @@ async function runForward() {
             finalMeta = { result };
         }
     }
-
-    if (!finalMeta) {
-        throw new Error(eventFiles.length
-            ? "Solo subiste events.json. Agrega también el chart de la canción (por ejemplo cancion-hard.json)."
-            : "No hay ningún chart para convertir.");
-    }
-    eventFiles.forEach(addEvents); // al final, para que cuenten aunque events.json se haya subido primero
 
     const r = finalMeta.result;
     const meta = CC.buildVSliceMeta({
