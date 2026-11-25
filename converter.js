@@ -1,6 +1,6 @@
 /* =====================================================================
  *  Chart Converter V3 — núcleo de conversión (sin DOM, probable en Node)
- *  Normal : Psych / Kade / Codename  →  V Slice
+ *  Normal : Psych / Kade / Codename / Funkin Maker Mobile (.FNMM)  →  V Slice
  *  Inversa: V Slice  →  Psych (psych_v1 / legacy) / Kade / Codename
  * ===================================================================== */
 (function (root) {
@@ -412,6 +412,184 @@
         };
     }
 
+    // ------------------------------------------------------------ FUNKIN MAKER MOBILE (.FNMM) → V SLICE
+    // Un .FNMM es un ZIP con data.json (notas), events.json (eventos), scene.json (escena), music.ogg y sprites/.
+    //  • Todos los tiempos van en SEGUNDOS (start / duration / time).
+    //  • data.strumLines[0] = jugador y data.strumLines[1] = oponente; cada una con 4 carriles (izq, abajo, arriba, der).
+    //  • events.json: "action_packs" (grupos de acciones reutilizables) + "events" (acciones en un instante;
+    //    RunActionPack ejecuta un pack). Solo CameraSet (focus) y CameraZoom tienen equivalente en V-Slice.
+    const FNMM_DEFAULT_SPEED = 2.5;
+
+    function isFunkinMakerFile(name) {
+        return /\.fnmm$/i.test(String(name || ""));
+    }
+
+    // Busca "data.json" / "events.json" / "scene.json" en la raíz del ZIP (o en una carpeta contenedora),
+    // sin confundirlos con los sprite.json de sprites/ ni con la basura de macOS.
+    function findFnmmEntry(zip, wanted) {
+        const names = Object.keys(zip.files).filter(n => !zip.files[n].dir && !/(^|\/)__MACOSX\//.test(n) && !/(^|\/)\._[^/]*$/.test(n));
+        const lower = wanted.toLowerCase();
+        const exact = names.find(n => n.toLowerCase() === lower);
+        if (exact) return exact;
+        return names.find(n => n.toLowerCase().endsWith("/" + lower) && !/(^|\/)sprites\//i.test(n)) || null;
+    }
+
+    // zip: instancia ya cargada de JSZip. Devuelve { data, events, scene } (events y scene pueden ser null).
+    async function readFunkinMakerArchive(zip) {
+        const read = async wanted => {
+            const entry = findFnmmEntry(zip, wanted);
+            if (!entry) return null;
+            try {
+                return parseJson(await zip.files[entry].async("string"));
+            } catch (err) {
+                throw new Error(`"${entry}" no es un JSON válido (${err.message}).`);
+            }
+        };
+        const data = await read("data.json");
+        if (!data) throw new Error("El .FNMM no contiene data.json: no parece un proyecto de Funkin Maker Mobile.");
+        return { data, events: await read("events.json"), scene: await read("scene.json") };
+    }
+
+    // Easing de Funkin Maker → nombre de FlxEase (los que V-Slice acepta en ZoomCamera).
+    function fnmmEase(name) {
+        const map = {
+            default: "linear", linear: "linear", quad: "quadInOut", quadratic: "quadInOut", cubic: "cubeInOut", cube: "cubeInOut",
+            quart: "quartInOut", quint: "quintInOut", sine: "sineInOut", expo: "expoInOut", circ: "circInOut",
+            back: "backInOut", elastic: "elasticInOut", bounce: "bounceInOut", smooth: "smoothStepInOut"
+        };
+        return map[String(name == null ? "" : name).toLowerCase()] || "linear";
+    }
+
+    // extra: { events, scene } (los JSON ya leídos del .FNMM). file: File/obj con .name (para el nombre de la canción).
+    function convertFunkinMakerToVSlice(data, extra, file) {
+        extra = extra || {};
+        if (!data || !Array.isArray(data.strumLines)) {
+            throw new Error("No se encontró 'strumLines' en data.json. Verifica que sea un .FNMM de Funkin Maker Mobile.");
+        }
+
+        const warnings = [];
+        const bpm = toNum(data.bpm, 100) > 0 ? toNum(data.bpm, 100) : 100;
+
+        // --- Notas: strumLine 0 → carriles 0-3 (jugador) | strumLine 1 → carriles 4-7 (oponente)
+        const notesArr = [];
+        let extraLines = 0, extraLanes = 0, skinNotes = 0, triggerNotes = 0, duplicates = 0;
+        const seen = new Set();
+        data.strumLines.forEach((line, si) => {
+            if (!Array.isArray(line)) return;
+            if (si > 1) { extraLines += line.reduce((a, l) => a + (Array.isArray(l) ? l.length : 0), 0); return; }
+            line.forEach((lane, li) => {
+                if (!Array.isArray(lane)) return;
+                if (li > 3) { extraLanes += lane.length; return; }
+                lane.forEach(n => {
+                    const start = toNum(n && n.start, NaN);
+                    if (!Number.isFinite(start)) return;
+                    const d = (si === 0 ? 0 : 4) + li;
+                    const t = round3(start * 1000);
+                    const key = `${t}|${d}`;
+                    if (seen.has(key)) { duplicates++; return; } // dos notas idénticas apiladas
+                    seen.add(key);
+                    const note = { t, d, l: round3(Math.max(0, toNum(n.duration, 0)) * 1000), p: [] };
+                    const props = (n && n.props) || {};
+                    const skin = toNum(props.skin, 0);
+                    if (skin > 0) { note.k = `skin${skin}`; skinNotes++; }
+                    if (toNum(props.onPressEvent, -1) >= 0 || toNum(props.onMissEvent, -1) >= 0) triggerNotes++;
+                    notesArr.push(note);
+                });
+            });
+        });
+        notesArr.sort((a, b) => a.t - b.t || a.d - b.d);
+        if (extraLines) warnings.push(`${extraLines} nota(s) de strumlines extra (más de 2) omitidas: V-Slice solo tiene jugador y oponente.`);
+        if (extraLanes) warnings.push(`${extraLanes} nota(s) de carriles extra (más de 4 por strumline) omitidas.`);
+        if (duplicates) warnings.push(`${duplicates} nota(s) duplicada(s) en el mismo carril y tiempo se unificaron.`);
+        if (skinNotes) warnings.push(`${skinNotes} nota(s) con skin distinta a la normal: se conservaron como tipo de nota 'skinN'.`);
+        if (triggerNotes) warnings.push(`${triggerNotes} nota(s) con evento al acertar/fallar (onPressEvent/onMissEvent) pierden ese evento: V-Slice no lo tiene.`);
+
+        // --- Eventos
+        // La cámara N de scene.json apunta a un personaje: se elige la strumline cuyo objeto queda más cerca de ella
+        // (así no depende del orden). Sin escena: cámara 1 → jugador, cámara 0 → oponente.
+        const charForCamera = idx => {
+            const scene = extra.scene;
+            const cam = scene && Array.isArray(scene.cameras) ? scene.cameras[idx] : null;
+            const camX = cam && cam.position ? toNum(cam.position.x, NaN) : NaN;
+            if (Number.isFinite(camX) && Array.isArray(scene.objects)) {
+                let best = null, bestDist = Infinity;
+                scene.objects.forEach(o => {
+                    const sl = toNum(o && o.strumLine, -1);
+                    if (sl !== 0 && sl !== 1) return;
+                    const tr = Array.isArray(o.transform) ? o.transform[0] : null;
+                    const x = tr && tr.position ? toNum(tr.position.x, NaN) : NaN;
+                    if (!Number.isFinite(x)) return;
+                    if (Math.abs(x - camX) < bestDist) { bestDist = Math.abs(x - camX); best = sl; }
+                });
+                if (best !== null) return best === 0 ? 0 : 1;
+            }
+            return idx === 0 ? 1 : 0;
+        };
+
+        // Duración → steps de V-Slice (1 step = 15000 / bpm ms).
+        const toSteps = (value, unit) => {
+            const v = Math.max(0, toNum(value, 0));
+            const u = String(unit == null ? "seconds" : unit).toLowerCase();
+            if (/beat/.test(u)) return v * 4;
+            if (/step/.test(u)) return v;
+            if (/^m(illi)?s/.test(u)) return v / 1000 * bpm / 15;
+            return v * bpm / 15;
+        };
+
+        const eventsArr = [];
+        const skipped = new Map();
+        const skip = name => skipped.set(name, (skipped.get(name) || 0) + 1);
+        const packs = extra.events && Array.isArray(extra.events.action_packs) ? extra.events.action_packs : [];
+
+        const run = (actions, t, depth) => {
+            if (!Array.isArray(actions)) return;
+            actions.forEach(a => {
+                if (!a || typeof a.type !== "string") return;
+                const p = a.props || {};
+                if (a.type === "RunActionPack") {
+                    const pack = packs[Math.round(toNum(p.actionPack, -1))];
+                    if (pack && depth < 8) run(pack.actions, t, depth + 1); // depth: un pack que se llama a sí mismo no cuelga
+                } else if (a.type === "CameraSet") {
+                    if (String(p.mode).toLowerCase() === "focus") {
+                        eventsArr.push({ t, e: "FocusCamera", v: { char: charForCamera(Math.round(toNum(p.target, 0))) } });
+                    } else skip(`CameraSet (${p.mode})`);
+                } else if (a.type === "CameraZoom") {
+                    const duration = round4(toSteps(p.transitionTime, p.transitionTimeUnit));
+                    const v = { ease: duration > 0 ? fnmmEase(p.easingType) : "INSTANT", duration, mode: "direct", zoom: round4(toNum(p.value, 1)) };
+                    eventsArr.push({ t, e: "ZoomCamera", v });
+                } else {
+                    skip(a.type); // CameraShake, Object*, GUI…: efectos de la escena sin equivalente en V-Slice
+                }
+            });
+        };
+        const rawEvents = extra.events && Array.isArray(extra.events.events) ? extra.events.events : [];
+        rawEvents.forEach(ev => {
+            const sec = toNum(ev && ev.time, NaN);
+            if (Number.isFinite(sec)) run(ev.actions, round3(sec * 1000), 0);
+        });
+        eventsArr.sort((a, b) => a.t - b.t);
+        const skippedWarning = skippedEventsWarning(skipped);
+        if (skippedWarning) warnings.push(skippedWarning);
+
+        warnings.push(`Funkin Maker no guarda velocidad de notas ni personajes: se usó velocidad ${FNMM_DEFAULT_SPEED}, bf / dad / gf y stage 'stage'. Cámbialos en el chart y la metadata si hace falta.`);
+
+        const songName = baseName(file && file.name) || "Unknown";
+        return {
+            canonicalKey: songName.toLowerCase(),
+            songName,
+            speed: FNMM_DEFAULT_SPEED,
+            bpm,
+            player1: "bf",
+            player2: "dad",
+            girlfriend: "gf",
+            stage: "stage",
+            difficulties: null,
+            notesArr, eventsArr: dedupeEvents(eventsArr),
+            timeChanges: [{ t: 0, b: 0, bpm, n: 4, d: 4, bt: [4, 4, 4, 4] }],
+            warnings
+        };
+    }
+
     // ------------------------------------------------------------ METADATA V SLICE
     function buildVSliceMeta(opts) {
         // Se ordenan easy → nightmare: V-Slice muestra las dificultades en el orden del array (antes quedaba
@@ -752,7 +930,8 @@
 
     const api = {
         GENERATED_BY, parseJson, getDiff, songKeyFromFile, slug, baseName,
-        isPsychEventsFile, readPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget
+        isPsychEventsFile, readPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget,
+        isFunkinMakerFile, readFunkinMakerArchive, convertFunkinMakerToVSlice
     };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     root.ChartConverter = api;

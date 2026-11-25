@@ -1,6 +1,7 @@
 # Chart Converter
 
 Convierte charts de FNF entre **Psych (0.6.3 / 0.7 / 1.0 / P-Slice), Kade, Codename y V-Slice** (`.fnfc`), en los dos sentidos.
+También lee proyectos **Funkin Maker Mobile (`.FNMM`) → V-Slice** (modo *Funkin Maker To V Slice*): notas y sustains, BPM, cámara y zoom. Los efectos de escena (shake, objetos, GUI) no existen en V-Slice y se omiten con aviso; Funkin Maker no guarda la velocidad de notas ni los personajes, así que se usan valores por defecto (2.5, bf / dad / gf).
 Por Panchito Manriquez & Deiby [GamerCB].
 
 Funciona en **Web, Windows, Linux, Android e iOS** con el mismo código (`index.html` + `script.js` + `converter.js`).

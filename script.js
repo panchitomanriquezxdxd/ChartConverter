@@ -50,7 +50,7 @@ let currentPack = null;           // { name, files: [{name, content}] } para el 
 const FORWARD_LABELS = {
     psych: "Psych Engine", psych063: "Psych 0.6.3 (Legacy)", kade: "Kade Engine",
     psych073: "Psych 0.7.3 (psych_v1)", psych104: "Psych 1.0.4 (psych_v1)",
-    pslice: "P Slice", codename: "Codename Engine"
+    pslice: "P Slice", codename: "Codename Engine", funkinmaker: "Funkin Maker Mobile"
 };
 const INVERSE_LABELS = {
     psych_v1: "Psych 0.7+ / 1.0 / P Slice", legacy: "Psych 0.6.3 (Legacy)",
@@ -106,7 +106,9 @@ function resetOutputs() {
 
 function refreshLabels() {
     if (direction === "forward") {
-        dropText.innerHTML = `¡Suelta tus charts de <span>${FORWARD_LABELS[converterMode] || "Psych Engine"}</span> aquí!`;
+        dropText.innerHTML = converterMode === "funkinmaker"
+            ? `¡Suelta tu proyecto <span>.FNMM</span> de Funkin Maker Mobile aquí!`
+            : `¡Suelta tus charts de <span>${FORWARD_LABELS[converterMode] || "Psych Engine"}</span> aquí!`;
         dropHint.textContent = "O haz clic para explorar tus Archivos";
         convertBtn.textContent = "✨ PROCESAR ARCHIVOS ✨";
         chartTitle.textContent = "chart.json";
@@ -187,9 +189,8 @@ dropZone.addEventListener("drop", e => {
 
 function isAccepted(name) {
     const n = name.toLowerCase();
-    return direction === "inverse"
-        ? (n.endsWith(".json") || n.endsWith(".fnfc") || n.endsWith(".zip"))
-        : n.endsWith(".json");
+    if (direction === "inverse") return n.endsWith(".json") || n.endsWith(".fnfc") || n.endsWith(".zip");
+    return converterMode === "funkinmaker" ? n.endsWith(".fnmm") : n.endsWith(".json");
 }
 
 const fileKey = f => `${f.name}|${f.size}|${f.lastModified}`;
@@ -220,7 +221,9 @@ function handleFiles(files) {
     } else {
         fileList.textContent = direction === "inverse"
             ? "⚠️ No se encontraron archivos .json, .fnfc o .zip válidos."
-            : "⚠️ No se encontraron archivos .json válidos.";
+            : (converterMode === "funkinmaker"
+                ? "⚠️ No se encontraron archivos .FNMM válidos."
+                : "⚠️ No se encontraron archivos .json válidos.");
         convertBtn.style.display = "none";
     }
 }
@@ -348,12 +351,14 @@ function psychModeFor(mode) {
 
 async function runForward() {
     const isCodename = converterMode === "codename";
+    const isFunkinMaker = converterMode === "funkinmaker";
     const finalChart = {
         version: "2.0.0",
         scrollSpeed: {},
         notes: {},
         events: [],
-        generatedBy: isCodename ? `${CC.GENERATED_BY} (Codename → V Slice)` : CC.GENERATED_BY
+        generatedBy: isCodename ? `${CC.GENERATED_BY} (Codename → V Slice)`
+            : isFunkinMaker ? `${CC.GENERATED_BY} (Funkin Maker → V Slice)` : CC.GENERATED_BY
     };
     let finalMeta = null;
     let songKey = "pack";
@@ -383,6 +388,18 @@ async function runForward() {
     const charts = [];
     let extraEvents = [];
     for (const file of selectedFiles) {
+        if (isFunkinMaker) {
+            // Un .FNMM es un ZIP: data.json (notas) + events.json + scene.json.
+            if (!requireJSZip()) throw new Error("JSZip no disponible.");
+            let parts;
+            try {
+                parts = await CC.readFunkinMakerArchive(await JSZip.loadAsync(file));
+            } catch (err) {
+                throw new Error(`"${file.name}": ${err.message}`);
+            }
+            charts.push({ file, rawData: parts.data, extra: parts });
+            continue;
+        }
         let rawData;
         try {
             rawData = CC.parseJson(await file.text());
@@ -406,12 +423,14 @@ async function runForward() {
     }
 
     // 2) Conversión de cada chart
-    for (const { file, rawData } of charts) {
+    for (const { file, rawData, extra } of charts) {
         let result;
         try {
-            result = isCodename
-                ? CC.convertCodenameToVSlice(rawData)
-                : CC.convertPsychToVSlice(rawData, file, psychModeFor(converterMode), { extraEvents });
+            result = isFunkinMaker
+                ? CC.convertFunkinMakerToVSlice(rawData, extra, file)
+                : isCodename
+                    ? CC.convertCodenameToVSlice(rawData)
+                    : CC.convertPsychToVSlice(rawData, file, psychModeFor(converterMode), { extraEvents });
         } catch (err) {
             throw new Error(`"${file.name}": ${err.message}`);
         }

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Chart Converter | Deiby/PanchitoManriquez</title>
-    <meta name="description" content="Convierte charts de FNF entre Psych, Kade, Codename y V-Slice (.fnfc). Funciona en Web, Windows, Linux, Android e iOS.">
+    <meta name="description" content="Convierte charts de FNF entre Psych, Kade, Codename, Funkin Maker Mobile y V-Slice (.fnfc). Funciona en Web, Windows, Linux, Android e iOS.">
     <meta name="theme-color" content="#05070b">
     <meta name="color-scheme" content="dark">
 
@@ -89,9 +89,14 @@
                     <span class="mode-icon">⚡</span>
                     <span class="mode-name">Codename To V Slice</span>
                 </label>
+                <label class="mode-card">
+                    <input type="radio" name="converter-mode" value="funkinmaker">
+                    <span class="mode-icon">📱</span>
+                    <span class="mode-name">Funkin Maker To V Slice</span>
+                </label>
             </div>
         </div>
-        
+
         <div class="mode-selector hidden" id="inverse-modes">
             <div class="metadata-options-title">🎯 FORMATO DE DESTINO (DESDE V SLICE)</div>
             <div class="mode-options">
@@ -127,6 +132,7 @@
             <p>🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Carriles absolutos + eventos inline de las secciones (ZoomCamera/FocusCamera).</p>
             <p>🫓 <strong>P Slice:</strong> Fork de Psych 1.0 (PE 1.0) — mismos charts psych_v1 absolutos, eventos review-top e inline.</p>
             <p>⚡ <strong>Codename Engine:</strong> Conversión de charts nativos (strumLines) a V Slice.</p>
+            <p>📱 <strong>Funkin Maker Mobile:</strong> sube el proyecto <code>.FNMM</code> directamente (se lee solo). Notas y sustains, BPM, cámara (FocusCamera) y zoom (ZoomCamera); los efectos de escena (shake, objetos, GUI) no existen en V Slice y se omiten con aviso.</p>
             <p>🔍 <strong>Eventos Inteligentes:</strong> Auto-mapeo de FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, etc.), PlayAnimation (Hey!, Play Animation) y ScrollSpeed (Change Scroll Speed), en ambos sentidos para Psych.</p>
             <p>📅 <strong>events.json (Psych):</strong> sube también el <code>events.json</code> de la canción junto a tus charts; sus eventos se añaden a todas las dificultades.</p>
             <p>🔥 <strong>Regla de Oro:</strong> Carril 0-3 (Player) | Carril 4-7 (Oponente).</p>

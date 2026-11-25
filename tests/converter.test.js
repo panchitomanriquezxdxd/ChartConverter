@@ -390,3 +390,141 @@ test("P Slice ('absolute') fuerza carriles absolutos aunque el chart no declare 
     const chart = { song: { song: "P", bpm: 100, notes: [{ mustHitSection: false, sectionBeats: 4, sectionNotes: [[0, 1, 0], [0, 6, 0]] }] } };
     assert.deepEqual(CC.convertPsychToVSlice(chart, FILE, "absolute").notesArr.map(n => n.d), [1, 6]);
 });
+
+// ------------------------------------------------------------ Funkin Maker Mobile (.FNMM) → V-Slice
+const JSZip = require("../vendor/jszip.min.js");
+const FNMM_FILE = { name: "javier_exe.FNMM" };
+const fnmmNote = (start, duration, props) => ({ start, duration: duration || 0, props: Object.assign({ skin: 0, onMissEvent: -1, onPressEvent: -1 }, props) });
+
+// Mismo esquema que un proyecto real: 2 strumlines × 4 carriles, tiempos en segundos, bpm 200.
+const fnmmData = () => ({
+    version: 4, bpm: 200, npb: 4,
+    strumLines: [
+        [[fnmmNote(9.6, 0.375)], [fnmmNote(9.6)], [], [fnmmNote(11.4)]],      // jugador
+        [[fnmmNote(19.2)], [], [fnmmNote(19.65, 0.15)], []]                   // oponente
+    ]
+});
+// scene.json: cámara 0 junto al oponente (x 663), cámara 1 junto al jugador (x 1522).
+const fnmmScene = () => ({
+    objects: [
+        { spr: "player", strumLine: 0, transform: [{ position: { x: 1522, y: 1164 } }] },
+        { spr: "enemy", strumLine: 1, transform: [{ position: { x: 663, y: 1087 } }] },
+        { spr: "sky", strumLine: -1, transform: [{ position: { x: 1015, y: 951 } }] }
+    ],
+    cameras: [{ position: { x: 919, y: 964 } }, { position: { x: 1239, y: 1032 } }]
+});
+const fnmmEvents = () => ({
+    action_packs: [
+        { actions: [{ type: "CameraSet", props: { mode: "focus", target: 0, transitionTime: 3.5, transitionTimeUnit: "seconds", easingType: "default" } }] },
+        { actions: [{ type: "CameraSet", props: { mode: "focus", target: 1, transitionTime: 3.5, transitionTimeUnit: "seconds", easingType: "default" } }] },
+        { actions: [{ type: "CameraShake", props: { shakes: 10, delay: 0.1, strength: 5, timeUnit: "seconds" } }, { type: "RunActionPack", props: { actionPack: 2 } }] } // se llama a sí mismo
+    ],
+    events: [
+        { time: 0, actions: [{ type: "RunActionPack", props: { actionPack: 1 } }, { type: "GUI", props: { visible: false } }] },
+        { time: 2.4, actions: [{ type: "RunActionPack", props: { actionPack: 0 } }] },
+        { time: 3, actions: [{ type: "RunActionPack", props: { actionPack: 2 } }] },
+        { time: 0.15, actions: [{ type: "CameraZoom", props: { value: 0.5, easingType: "default", transitionTime: 0, transitionTimeUnit: "seconds" } }] },
+        { time: 0.3, actions: [{ type: "CameraZoom", props: { value: 1, easingType: "cubic", transitionTime: 7, transitionTimeUnit: "seconds" } }] }
+    ]
+});
+const fromFnmm = (data, events, scene) => CC.convertFunkinMakerToVSlice(data || fnmmData(), { events: events === undefined ? fnmmEvents() : events, scene: scene === undefined ? fnmmScene() : scene }, FNMM_FILE);
+
+test("Funkin Maker → V-Slice: strumline 0 = jugador (0-3), strumline 1 = oponente (4-7), tiempos en ms", () => {
+    const r = fromFnmm();
+    assert.deepEqual(r.notesArr.map(n => [n.t, n.d, n.l]), [[9600, 0, 375], [9600, 1, 0], [11400, 3, 0], [19200, 4, 0], [19650, 6, 150]]);
+    assert.equal(r.bpm, 200);
+    assert.deepEqual(r.timeChanges, [{ t: 0, b: 0, bpm: 200, n: 4, d: 4, bt: [4, 4, 4, 4] }]);
+    assert.equal(r.songName, "javier_exe");
+    assert.equal(r.canonicalKey, "javier_exe");
+});
+
+test("Funkin Maker → V-Slice: el resultado alimenta buildVSliceMeta igual que el resto de modos", () => {
+    const r = fromFnmm();
+    const meta = CC.buildVSliceMeta({ songName: r.songName, bpm: r.bpm, timeChanges: r.timeChanges, difficulties: ["normal"] });
+    assert.equal(meta.timeChanges[0].bpm, 200);
+    assert.equal(meta.songName, "javier_exe");
+});
+
+test("Funkin Maker: CameraSet (focus) apunta al personaje cuya posición está más cerca de esa cámara", () => {
+    const focus = fromFnmm().eventsArr.filter(e => e.e === "FocusCamera");
+    assert.deepEqual(focus.map(e => [e.t, e.v.char]), [[0, 0], [2400, 1]]); // cámara 1 → jugador (0), cámara 0 → oponente (1)
+    // Sin scene.json: cámara 1 → jugador, cámara 0 → oponente.
+    const noScene = fromFnmm(undefined, undefined, null).eventsArr.filter(e => e.e === "FocusCamera");
+    assert.deepEqual(noScene.map(e => e.v.char), [0, 1]);
+});
+
+test("Funkin Maker: CameraZoom → ZoomCamera con la duración en steps (segundos × bpm / 15) y INSTANT si es 0", () => {
+    const zoom = fromFnmm().eventsArr.filter(e => e.e === "ZoomCamera");
+    assert.deepEqual(zoom.map(e => [e.t, e.v.zoom, e.v.mode, e.v.ease]), [[150, 0.5, "direct", "INSTANT"], [300, 1, "direct", "cubeInOut"]]);
+    assert.equal(zoom[0].v.duration, 0);
+    assert.equal(zoom[1].v.duration, round4(7 * 200 / 15));
+});
+function round4(x) { return Math.round(x * 10000) / 10000; }
+
+test("Funkin Maker: efectos sin equivalente se avisan y un pack que se llama a sí mismo no cuelga", () => {
+    const r = fromFnmm();
+    const w = r.warnings.find(x => /sin equivalente/.test(x));
+    assert.match(w, /GUI/);
+    assert.match(w, /CameraShake/);
+    assert.ok(r.warnings.some(x => /velocidad 2\.5/.test(x)));
+    assert.equal(r.speed, 2.5);
+});
+
+test("Funkin Maker: un chart sin events.json ni scene.json convierte solo las notas", () => {
+    const r = fromFnmm(undefined, null, null);
+    assert.equal(r.notesArr.length, 5);
+    assert.deepEqual(r.eventsArr, []);
+});
+
+test("Funkin Maker: notas duplicadas, strumlines/carriles extra, skins y triggers se avisan", () => {
+    const data = fnmmData();
+    data.strumLines[0][0].push(fnmmNote(9.6));                       // duplicada exacta
+    data.strumLines[0][1].push(fnmmNote(12, 0, { skin: 2 }));        // skin distinta
+    data.strumLines[1][3].push(fnmmNote(20, 0, { onPressEvent: 3 })); // dispara un evento
+    data.strumLines.push([[fnmmNote(1)]]);                           // tercera strumline
+    data.strumLines[0].push([fnmmNote(2), fnmmNote(3)]);             // quinto carril
+    const r = fromFnmm(data);
+    assert.equal(r.notesArr.length, 7);
+    assert.equal(r.notesArr.find(n => n.t === 12000).k, "skin2");
+    const all = r.warnings.join("\n");
+    assert.match(all, /1 nota\(s\) duplicada/);
+    assert.match(all, /1 nota\(s\) de strumlines extra/);
+    assert.match(all, /2 nota\(s\) de carriles extra/);
+    assert.match(all, /1 nota\(s\) con skin/);
+    assert.match(all, /1 nota\(s\) con evento al acertar/);
+});
+
+test("Funkin Maker: data.json sin strumLines lanza un error claro", () => {
+    assert.throws(() => CC.convertFunkinMakerToVSlice({ bpm: 100 }, {}, FNMM_FILE), /strumLines/);
+    assert.throws(() => CC.convertFunkinMakerToVSlice(null, {}, FNMM_FILE), /strumLines/);
+});
+
+test("Funkin Maker: isFunkinMakerFile reconoce .FNMM en cualquier capitalización", () => {
+    assert.ok(CC.isFunkinMakerFile("javier_exe.FNMM"));
+    assert.ok(CC.isFunkinMakerFile("song.fnmm"));
+    assert.ok(!CC.isFunkinMakerFile("song.json"));
+});
+
+test("Funkin Maker: el .FNMM (ZIP) se lee ignorando los sprite.json y la basura de macOS", async () => {
+    const zip = new JSZip();
+    zip.file("data.json", JSON.stringify(fnmmData()));
+    zip.file("events.json", JSON.stringify(fnmmEvents()));
+    zip.file("scene.json", JSON.stringify(fnmmScene()));
+    zip.file("sprites/player/sprite.json", JSON.stringify({ type: 1, data: [] }));
+    zip.file("__MACOSX/data.json", "basura");
+    const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: "nodebuffer" }));
+    const parts = await CC.readFunkinMakerArchive(loaded);
+    assert.equal(parts.data.bpm, 200);
+    assert.equal(parts.events.events.length, 5);
+    assert.equal(parts.scene.cameras.length, 2);
+    assert.equal(CC.convertFunkinMakerToVSlice(parts.data, parts, FNMM_FILE).notesArr.length, 5);
+});
+
+test("Funkin Maker: un ZIP sin data.json o con JSON roto da un error claro", async () => {
+    const noData = new JSZip();
+    noData.file("music.ogg", "x");
+    await assert.rejects(CC.readFunkinMakerArchive(await JSZip.loadAsync(await noData.generateAsync({ type: "nodebuffer" }))), /data\.json/);
+    const bad = new JSZip();
+    bad.file("data.json", "{no es json");
+    await assert.rejects(CC.readFunkinMakerArchive(await JSZip.loadAsync(await bad.generateAsync({ type: "nodebuffer" }))), /no es un JSON válido/);
+});
