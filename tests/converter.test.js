@@ -137,3 +137,29 @@ test("buildVSliceMeta incluye dificultades, álbum y stickers", () => {
     assert.equal(m.playData.stickerPack, "Pack");
     assert.deepEqual(Object.keys(m.playData.ratings), ["easy", "hard"]);
 });
+
+test("songKeyFromFile quita chart/metadata y dificultad en cualquier orden", () => {
+    for (const name of ["song-erect-chart.json", "song-chart-erect.json", "song-metadata-erect.json", "song_hard_chart.json"]) {
+        assert.equal(CC.songKeyFromFile(name), "song", name);
+    }
+});
+
+test("generatedBy dice Chart Converter en V-Slice y en todos los destinos inversos", () => {
+    assert.match(CC.GENERATED_BY, /^Chart Converter/);
+    const { chart, meta } = toVSlice(legacyChart(), "063");
+    assert.equal(meta.generatedBy, CC.GENERATED_BY);
+    for (const target of ["psych_v1", "legacy", "kade", "codename"]) {
+        const out = CC.convertVSliceToTarget(chart, meta, target, {});
+        const json = JSON.parse(out.files[0].content);
+        assert.equal(json.generatedBy, CC.GENERATED_BY, target);
+    }
+});
+
+test("la firma generatedBy no rompe la ida y vuelta de psych_v1 ni legacy", () => {
+    const { r, chart, meta } = toVSlice(legacyChart(), "063");
+    for (const [target, mode] of [["psych_v1", "104"], ["legacy", "063"]]) {
+        const out = CC.convertVSliceToTarget(chart, meta, target, {});
+        const back = CC.convertPsychToVSlice(JSON.parse(out.files[0].content), FILE, mode);
+        assert.deepEqual(back.notesArr.map(n => n.d), r.notesArr.map(n => n.d), target);
+    }
+});

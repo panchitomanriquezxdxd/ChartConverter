@@ -352,7 +352,7 @@ async function runForward() {
         scrollSpeed: {},
         notes: {},
         events: [],
-        generatedBy: isCodename ? "Chart Converter V3 GCD (Codename → V Slice)" : "Chart Converter V3 GCD"
+        generatedBy: isCodename ? `${CC.GENERATED_BY} (Codename → V Slice)` : CC.GENERATED_BY
     };
     let finalMeta = null;
     let songKey = "pack";
@@ -385,6 +385,7 @@ async function runForward() {
         finalChart.scrollSpeed[diff] = result.speed;
         finalChart.notes[diff] = result.notesArr;
         warnings.push(...result.warnings.map(w => `${file.name}: ${w}`));
+        if (!result.notesArr.length) warnings.push(`${file.name}: no se encontró ninguna nota; revisa que el modo de origen sea el correcto.`);
 
         // Los eventos de V-Slice son globales: se deduplican entre dificultades.
         result.eventsArr.forEach(ev => {
@@ -451,7 +452,10 @@ async function collectJsonEntries() {
             } catch (err) {
                 throw new Error(`No se pudo abrir "${file.name}" como ZIP/.fnfc (${err.message}).`);
             }
-            const names = Object.keys(zip.files).filter(n => !zip.files[n].dir && n.toLowerCase().endsWith(".json") && !/(^|\/)manifest\.json$/i.test(n));
+            // Se ignoran manifest.json y la basura que macOS mete en los ZIP (__MACOSX/, ._archivo.json),
+            // que antes rompía la conversión con "no es un JSON válido".
+            const names = Object.keys(zip.files).filter(n => !zip.files[n].dir && n.toLowerCase().endsWith(".json") &&
+                !/(^|\/)manifest\.json$/i.test(n) && !/(^|\/)__MACOSX\//.test(n) && !/(^|\/)\._[^/]*$/.test(n));
             for (const n of names) entries.push({ name: n, text: await zip.files[n].async("string") });
         } else {
             entries.push({ name: file.name, text: await file.text() });

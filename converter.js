@@ -8,6 +8,8 @@
 
     const KNOWN_DIFFS = ["easy", "normal", "hard", "erect", "nightmare"];
     const DEFAULT_RATINGS = { easy: 3, normal: 5, hard: 6, erect: 7, nightmare: 8 };
+    // Firma que se escribe en el campo "generatedBy" de todo lo que genera la herramienta.
+    const GENERATED_BY = "Chart Converter V3 GCD";
 
     // ------------------------------------------------------------ utilidades
     function parseJson(text) {
@@ -39,10 +41,15 @@
     }
     function songKeyFromFile(name) {
         let b = baseName(name).toLowerCase();
-        for (const d of KNOWN_DIFFS) {
-            if (b.endsWith("-" + d) || b.endsWith("_" + d)) { b = b.slice(0, -(d.length + 1)); break; }
+        // Quita sufijos en cualquier orden ("cancion-erect-chart" y "cancion-chart-erect" → "cancion").
+        // Antes solo se quitaba la dificultad al final, así que "cancion-erect-chart" dejaba "cancion-erect".
+        let changed = true;
+        while (changed) {
+            changed = false;
+            const m = b.match(/^(.+?)[-_](chart|metadata|easy|normal|hard|erect|nightmare)$/);
+            if (m) { b = m[1]; changed = true; }
         }
-        return b.replace(/-(chart|metadata)$/, "");
+        return b;
     }
 
     // ------------------------------------------------------------ PSYCH / KADE → V SLICE
@@ -307,7 +314,7 @@
             looped: false,
             offsets: { instrumental: 0, altInstrumentals: {}, vocals: {}, altVocals: {} },
             playData,
-            generatedBy: "Chart Converter V3 GCD",
+            generatedBy: GENERATED_BY,
             timeFormat: "ms",
             timeChanges: (opts.timeChanges && opts.timeChanges.length)
                 ? opts.timeChanges
@@ -460,7 +467,7 @@
                 const cMeta = { name: key, displayName: songName, bpm: tcs[0].bpm, beatsPerMeasure: 4, stepsPerBeat: 4, difficulties: diffs.map(d => d.toUpperCase()), icon: player2 };
                 files.push({
                     name: `charts/${key}/${diff}.json`,
-                    content: JSON.stringify({ strumLines, events, meta: cMeta, noteTypes, scrollSpeed: speed, stage, codenameChart: true }, null, 2)
+                    content: JSON.stringify({ strumLines, events, meta: cMeta, noteTypes, scrollSpeed: speed, stage, codenameChart: true, generatedBy: GENERATED_BY }, null, 2)
                 });
                 diffNames[diff] = true;
                 return;
@@ -529,9 +536,10 @@
                 validScore: true
             };
             if (isKade) songObj.eventObjects = [{ name: "Init BPM", position: 0, value: tcs[0].bpm, type: "BPM Change" }];
-            if (isV1) { songObj.format = "psych_v1"; songObj.offset = 0; }
+            if (isV1) { songObj.format = "psych_v1"; songObj.offset = 0; songObj.generatedBy = GENERATED_BY; }
 
-            const content = JSON.stringify(isV1 ? songObj : { song: songObj }, null, 2);
+            // En legacy/Kade la firma va fuera de "song" para no tocar la estructura que lee el motor.
+            const content = JSON.stringify(isV1 ? songObj : { song: songObj, generatedBy: GENERATED_BY }, null, 2);
             const fname = diff === "normal" ? `${key}.json` : `${key}-${diff}.json`;
             files.push({ name: fname, content });
         });
@@ -550,7 +558,7 @@
     }
 
     const api = {
-        parseJson, getDiff, songKeyFromFile, slug, baseName,
+        GENERATED_BY, parseJson, getDiff, songKeyFromFile, slug, baseName,
         convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget
     };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
