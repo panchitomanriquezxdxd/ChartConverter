@@ -8,7 +8,7 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const out = path.join(root, "www");
 
-const FILES = ["index.html", "style.css", "script.js", "converter.js", "manifest.webmanifest", "favicon.svg", "favicon.ico"];
+const FILES = ["index.html", "style.css", "script.js", "i18n.js", "converter.js", "manifest.webmanifest", "favicon.svg", "favicon.ico"];
 const DIRS = ["icons", "vendor"];
 
 const missing = [...FILES, ...DIRS].filter(p => !fs.existsSync(path.join(root, p)));

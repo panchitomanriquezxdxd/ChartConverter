@@ -1,5 +1,7 @@
 /* Chart Converter V3 — interfaz. La lógica de conversión vive en converter.js */
 const CC = window.ChartConverter;
+const I18N = window.I18N;
+const tr = (key, params) => I18N.t(key, params); // texto en el idioma activo (i18n.js)
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -57,6 +59,14 @@ const INVERSE_LABELS = {
     kade: "Kade Engine", codename: "Codename Engine"
 };
 
+// Estado de la línea de estado: se guarda la CLAVE (no el texto) para volver a dibujarla si cambia el idioma.
+let statusState = null;
+function renderStatus() {
+    fileList.textContent = !statusState ? "" : (statusState.raw !== undefined ? statusState.raw : tr(statusState.key, statusState.params));
+}
+function setStatus(key, params) { statusState = { key, params }; renderStatus(); }
+function setStatusRaw(text) { statusState = text ? { raw: text } : null; renderStatus(); }
+
 // ---------------------------------------------------------------- utilidades UI
 function showEl(el, visible, display) {
     el.style.display = visible ? (display || "block") : "none";
@@ -95,7 +105,7 @@ function renderWarnings(list) {
 function resetOutputs() {
     selectedFiles = [];
     currentPack = null;
-    fileList.textContent = "";
+    setStatusRaw("");
     renderWarnings([]);
     renderFileNames();
     chartArea.value = "";
@@ -104,26 +114,26 @@ function resetOutputs() {
     downloadZipBtn.style.display = "none";
 }
 
-function refreshLabels() {
+// keepTitles: al cambiar de idioma con un resultado ya mostrado, los títulos son nombres de archivo y no se tocan.
+function refreshLabels(keepTitles) {
     if (direction === "forward") {
         dropText.innerHTML = converterMode === "funkinmaker"
-            ? `¡Suelta tu proyecto <span>.FNMM</span> de Funkin Maker Mobile aquí!`
-            : `¡Suelta tus charts de <span>${FORWARD_LABELS[converterMode] || "Psych Engine"}</span> aquí!`;
-        dropHint.textContent = "O haz clic para explorar tus Archivos";
-        convertBtn.textContent = "✨ PROCESAR ARCHIVOS ✨";
-        chartTitle.textContent = "chart.json";
-        metaTitle.textContent = "metadata.json";
-        chartArea.placeholder = "Las notas convertidas aparecerán aquí...";
-        metaArea.placeholder = "Los metadatos aparecerán aquí...";
+            ? tr("drop.forward.fnmm")
+            : tr("drop.forward", { mode: FORWARD_LABELS[converterMode] || "Psych Engine" });
+        dropHint.textContent = tr("drop.hint.forward");
+        convertBtn.textContent = tr("btn.convert");
+        if (!keepTitles) { chartTitle.textContent = "chart.json"; metaTitle.textContent = "metadata.json"; }
+        chartArea.placeholder = tr("ph.chart");
+        metaArea.placeholder = tr("ph.meta");
     } else {
-        dropText.innerHTML = `¡Suelta tu <span>chart + metadata</span> de V Slice (o un <span>.fnfc</span>) aquí!`;
-        dropHint.textContent = `Destino: ${INVERSE_LABELS[inverseMode]} · acepta .json, .fnfc y .zip`;
-        convertBtn.textContent = `🔄 CONVERTIR A ${INVERSE_LABELS[inverseMode].toUpperCase()}`;
-        chartTitle.textContent = "chart convertido";
-        metaTitle.textContent = "informe / archivos";
-        chartArea.placeholder = "El primer archivo convertido aparecerá aquí...";
-        metaArea.placeholder = "Aquí verás los archivos generados y avisos...";
+        dropText.innerHTML = tr("drop.inverse");
+        dropHint.textContent = tr("drop.hint.inverse", { target: INVERSE_LABELS[inverseMode] });
+        convertBtn.textContent = tr("btn.convert.inverse", { target: INVERSE_LABELS[inverseMode].toUpperCase() });
+        if (!keepTitles) { chartTitle.textContent = tr("title.chart.inverse"); metaTitle.textContent = tr("title.meta.inverse"); }
+        chartArea.placeholder = tr("ph.chart.inverse");
+        metaArea.placeholder = tr("ph.meta.inverse");
     }
+    downloadZipBtn.textContent = tr(direction === "forward" ? "btn.zip" : "btn.zip.inverse");
 }
 
 function setDirection(dir) {
@@ -135,7 +145,6 @@ function setDirection(dir) {
     showEl(statusInverse, !fwd);
     showEl(metaExtraBox, fwd);
     showEl(fnfcBox, fwd);
-    downloadZipBtn.textContent = fwd ? "🎁 DESCARGAR PACK (.ZIP)" : "🎁 DESCARGAR ARCHIVOS CONVERTIDOS (.ZIP)";
     resetOutputs();
     refreshLabels();
 }
@@ -215,15 +224,11 @@ function handleFiles(files) {
     renderFileNames();
 
     if (selectedFiles.length > 0) {
-        fileList.textContent = `🔥 ¡${selectedFiles.length} archivo(s) detectado(s) listo(s) para reventar!`;
+        setStatus("list.found", { n: selectedFiles.length });
         convertBtn.style.display = "block";
-        if (rejected) notify(`Se ignoraron ${rejected} archivo(s) con formato no válido.`);
+        if (rejected) notify(tr("list.ignored", { n: rejected }));
     } else {
-        fileList.textContent = direction === "inverse"
-            ? "⚠️ No se encontraron archivos .json, .fnfc o .zip válidos."
-            : (converterMode === "funkinmaker"
-                ? "⚠️ No se encontraron archivos .FNMM válidos."
-                : "⚠️ No se encontraron archivos .json válidos.");
+        setStatus(direction === "inverse" ? "list.none.inverse" : (converterMode === "funkinmaker" ? "list.none.fnmm" : "list.none"));
         convertBtn.style.display = "none";
     }
 }
@@ -237,17 +242,17 @@ document.querySelectorAll("[data-copy]").forEach(btn => {
 function copyToClipboard(areaId, button) {
     const textarea = document.getElementById(areaId);
     const reset = () => {
-        button.innerText = "📋 Copiar";
+        button.innerText = tr("copy.label");
         button.style.borderColor = "";
         button.style.color = "";
     };
     if (!textarea.value) {
-        button.innerText = "❌ ¡Vacío!";
+        button.innerText = tr("copy.empty");
         setTimeout(reset, 1500);
         return;
     }
     const done = () => {
-        button.innerText = "✅ ¡Copiado!";
+        button.innerText = tr("copy.done");
         button.style.borderColor = "#00ff66";
         button.style.color = "#00ff66";
         setTimeout(reset, 2000);
@@ -260,7 +265,7 @@ function copyToClipboard(areaId, button) {
         } catch (err) {
             console.error("Error al copiar código: ", err);
         }
-        button.innerText = "❌ Sin permisos";
+        button.innerText = tr("copy.denied");
         setTimeout(reset, 1500);
     };
     // navigator.clipboard no existe en contextos no seguros (file://) o falla sin permisos.
@@ -282,7 +287,7 @@ function isNativeApp() {
 function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onerror = () => reject(reader.error || new Error("No se pudo leer el archivo."));
+        reader.onerror = () => reject(reader.error || new Error(tr("err.readfile")));
         reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
         reader.readAsDataURL(blob);
     });
@@ -293,14 +298,14 @@ const isCancel = err => /cancel|abort|dismiss/i.test(String((err && (err.message
 async function saveNative(blob, filename) {
     const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
     const { Filesystem, Share } = plugins;
-    if (!Filesystem || !Share) throw new Error("Plugins nativos no disponibles.");
+    if (!Filesystem || !Share) throw new Error(tr("err.noplugins"));
     const written = await Filesystem.writeFile({
         path: filename,
         data: await blobToBase64(blob), // sin 'encoding' = base64
         directory: "CACHE",
         recursive: true
     });
-    await Share.share({ title: filename, dialogTitle: "Guardar o compartir", files: [written.uri] });
+    await Share.share({ title: filename, dialogTitle: tr("share.dialog"), files: [written.uri] });
 }
 
 function isIosStandalone() {
@@ -334,7 +339,7 @@ async function saveFile(blob, filename) {
 
 function requireJSZip() {
     if (typeof JSZip === "undefined") {
-        notify("❌ No se pudo cargar JSZip (vendor/jszip.min.js). Recarga la página o reinstala la app.", "error");
+        notify(tr("err.jszip"), "error");
         return false;
     }
     return true;
@@ -390,12 +395,12 @@ async function runForward() {
     for (const file of selectedFiles) {
         if (isFunkinMaker) {
             // Un .FNMM es un ZIP: data.json (notas) + events.json + scene.json.
-            if (!requireJSZip()) throw new Error("JSZip no disponible.");
+            if (!requireJSZip()) throw new Error(tr("err.nojszip"));
             let parts;
             try {
                 parts = await CC.readFunkinMakerArchive(await JSZip.loadAsync(file));
             } catch (err) {
-                throw new Error(`"${file.name}": ${err.message}`);
+                throw new Error(tr("err.fileprefix", { file: file.name, msg: err.message }));
             }
             charts.push({ file, rawData: parts.data, extra: parts });
             continue;
@@ -404,22 +409,20 @@ async function runForward() {
         try {
             rawData = CC.parseJson(await file.text());
         } catch (err) {
-            throw new Error(`"${file.name}" no es un JSON válido (${err.message}).`);
+            throw new Error(tr("err.badjson", { file: file.name, msg: err.message }));
         }
         if (!isCodename && CC.isPsychEventsFile(file.name)) {
             try {
                 extraEvents = extraEvents.concat(CC.readPsychEventsFile(rawData));
             } catch (err) {
-                throw new Error(`"${file.name}": ${err.message}`);
+                throw new Error(tr("err.fileprefix", { file: file.name, msg: err.message }));
             }
         } else {
             charts.push({ file, rawData });
         }
     }
     if (!charts.length) {
-        throw new Error(extraEvents.length
-            ? "Solo subiste events.json. Agrega también el chart de la canción (por ejemplo cancion-hard.json)."
-            : "No hay ningún chart para convertir.");
+        throw new Error(tr(extraEvents.length ? "err.onlyevents" : "err.nocharts"));
     }
 
     // 2) Conversión de cada chart
@@ -432,18 +435,18 @@ async function runForward() {
                     ? CC.convertCodenameToVSlice(rawData)
                     : CC.convertPsychToVSlice(rawData, file, psychModeFor(converterMode), { extraEvents });
         } catch (err) {
-            throw new Error(`"${file.name}": ${err.message}`);
+            throw new Error(tr("err.fileprefix", { file: file.name, msg: err.message }));
         }
 
         const diff = CC.getDiff(file.name);
-        if (activeDifficulties.includes(diff)) warnings.push(`Dos archivos apuntan a la dificultad '${diff}': se usó el último ("${file.name}").`);
+        if (activeDifficulties.includes(diff)) warnings.push(tr("warn.dupdiff", { diff, file: file.name }));
         else activeDifficulties.push(diff);
         if (songKey === "pack") songKey = CC.slug(result.canonicalKey, "pack");
 
         finalChart.scrollSpeed[diff] = result.speed;
         finalChart.notes[diff] = result.notesArr;
         pushWarnings(file, result.warnings);
-        if (!result.notesArr.length) warnings.push(`${file.name}: no se encontró ninguna nota; revisa que el modo de origen sea el correcto.`);
+        if (!result.notesArr.length) warnings.push(tr("warn.nonotes", { file: file.name }));
 
         addEvents(result.eventsArr);
 
@@ -495,12 +498,12 @@ async function collectJsonEntries() {
     for (const file of selectedFiles) {
         const lower = file.name.toLowerCase();
         if (lower.endsWith(".fnfc") || lower.endsWith(".zip")) {
-            if (!requireJSZip()) throw new Error("JSZip no disponible.");
+            if (!requireJSZip()) throw new Error(tr("err.nojszip"));
             let zip;
             try {
                 zip = await JSZip.loadAsync(file);
             } catch (err) {
-                throw new Error(`No se pudo abrir "${file.name}" como ZIP/.fnfc (${err.message}).`);
+                throw new Error(tr("err.zipopen", { file: file.name, msg: err.message }));
             }
             // Se ignoran manifest.json y la basura que macOS mete en los ZIP (__MACOSX/, ._archivo.json),
             // que antes rompía la conversión con "no es un JSON válido".
@@ -528,12 +531,12 @@ async function runInverse() {
         try {
             obj = CC.parseJson(entry.text);
         } catch (err) {
-            throw new Error(`"${entry.name}" no es un JSON válido (${err.message}).`);
+            throw new Error(tr("err.badjson", { file: entry.name, msg: err.message }));
         }
         if (looksLikeVSliceChart(obj)) {
             chartCount++;
             Object.keys(obj.notes).forEach(d => {
-                if (chart.notes[d]) warnings.push(`La dificultad '${d}' aparece en más de un chart; se usó la última ("${entry.name}").`);
+                if (chart.notes[d]) warnings.push(tr("warn.dupdiff.inverse", { diff: d, file: entry.name }));
                 chart.notes[d] = obj.notes[d];
             });
             Object.assign(chart.scrollSpeed, obj.scrollSpeed || {});
@@ -547,16 +550,16 @@ async function runInverse() {
             const isBase = /(^|[\\/])[^\\/]*-metadata\.json$/i.test(entry.name);
             if (!meta) { meta = obj; metaIsBase = isBase; }
             else if (isBase && !metaIsBase) {
-                warnings.push(`Se usó la metadata base ("${entry.name}") y se ignoró la de una variación.`);
+                warnings.push(tr("warn.basemeta", { file: entry.name }));
                 meta = obj; metaIsBase = true;
-            } else warnings.push(`Se ignoró metadata adicional ("${entry.name}"); solo se usa la primera.`);
+            } else warnings.push(tr("warn.extrameta", { file: entry.name }));
         } else {
-            warnings.push(`"${entry.name}" no parece un chart ni metadata de V Slice: se ignoró.`);
+            warnings.push(tr("warn.notvslice", { file: entry.name }));
         }
     }
 
     if (!chartCount) {
-        throw new Error("No se encontró ningún chart de V Slice (archivo con 'notes' por dificultad y 'scrollSpeed'). Si tus archivos son de Psych/Kade/Codename usa la dirección Normal.");
+        throw new Error(tr("err.novslice"));
     }
     chart.events.sort((a, b) => a.t - b.t);
 
@@ -570,13 +573,13 @@ async function runInverse() {
     chartArea.value = result.files[0].content;
     chartTitle.textContent = result.files[0].name;
     const report = [
-        `Canción: ${result.songName}`,
-        `Destino: ${INVERSE_LABELS[inverseMode]}`,
-        `Dificultades: ${result.difficulties.join(", ")}`,
+        tr("report.song", { v: result.songName }),
+        tr("report.target", { v: INVERSE_LABELS[inverseMode] }),
+        tr("report.diffs", { v: result.difficulties.join(", ") }),
         "",
-        "Archivos generados:",
+        tr("report.files"),
         ...result.files.map(f => `  • ${f.name}`),
-        ...(warnings.length ? ["", "Avisos:", ...warnings.map(w => `  ⚠ ${w}`)] : [])
+        ...(warnings.length ? ["", tr("report.warnings"), ...warnings.map(w => `  ⚠ ${w}`)] : [])
     ];
     metaArea.value = report.join("\n");
 
@@ -594,14 +597,13 @@ async function runConversion() {
         downloadZipBtn.style.display = "block";
         // En modo inverso los avisos ya aparecen en el panel derecho; en modo normal se listan aquí.
         renderWarnings(direction === "forward" ? res.warnings : []);
-        fileList.textContent = res.warnings.length
-            ? `✅ Conversión lista con ${res.warnings.length} aviso(s) — ${direction === "inverse" ? "revisa el panel derecho" : "revisa los avisos de abajo"}.`
-            : "✅ ¡Conversión lista!";
+        if (res.warnings.length) setStatus(direction === "inverse" ? "done.warn.inverse" : "done.warn.forward", { n: res.warnings.length });
+        else setStatus("done.ok");
         return res;
     } catch (err) {
-        notify("❌ Error al convertir: " + err.message, "error");
+        notify(tr("err.convert", { msg: err.message }), "error");
         console.error(err);
-        fileList.textContent = "❌ " + err.message;
+        setStatusRaw("❌ " + err.message);
         chartArea.value = "";
         metaArea.value = "";
         currentPack = null;
@@ -624,7 +626,7 @@ downloadZipBtn.addEventListener("click", async () => {
         await saveFile(blob, currentPack.name);
     } catch (err) {
         console.error(err);
-        notify("❌ No se pudo guardar el ZIP: " + err.message, "error");
+        notify(tr("err.zip", { msg: err.message }), "error");
     } finally {
         downloadZipBtn.disabled = false;
     }
@@ -637,11 +639,11 @@ fnfcBtn.addEventListener("click", async () => {
     // Se validan los requisitos ANTES de convertir (antes se convertía primero y el error de
     // "falta Inst.ogg" aparecía después de haber procesado todo).
     if (selectedFiles.length === 0) {
-        notify("❌ No hay charts cargados. Arrastra o sube los archivos JSON del mapa antes de generar el pack.", "error");
+        notify(tr("err.nofiles"), "error");
         return;
     }
     if (!instFile) {
-        notify("❌ Debes subir el audio 'Inst.ogg' — es OBLIGATORIO para el pack .fnfc.", "error");
+        notify(tr("err.noinst"), "error");
         instAudioInput.focus();
         return;
     }
@@ -649,7 +651,7 @@ fnfcBtn.addEventListener("click", async () => {
     const notOgg = f => f && !/\.(ogg|oga)$/i.test(f.name) && !/ogg/i.test(f.type || "");
     const badAudio = [instAudioInput.files[0], oppAudioInput.files[0], plyAudioInput.files[0]].find(notOgg);
     if (badAudio) {
-        notify(`❌ "${badAudio.name}" no es .ogg. El .fnfc necesita audios OGG (convierte el archivo antes de subirlo).`, "error");
+        notify(tr("err.notogg", { file: badAudio.name }), "error");
         return;
     }
 
@@ -689,7 +691,7 @@ fnfcBtn.addEventListener("click", async () => {
         await saveFile(blob, `${songKey}.fnfc`);
     } catch (err) {
         console.error(err);
-        notify("❌ No se pudo generar el .fnfc: " + err.message, "error");
+        notify(tr("err.fnfc", { msg: err.message }), "error");
     } finally {
         fnfcBtn.disabled = false;
     }
@@ -703,4 +705,26 @@ if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol) && !isNa
     });
 }
 
+// ---------------------------------------------------------------- idioma
+// El selector se rellena con los idiomas de i18n.js; la elección se recuerda (localStorage) y, si no hay una,
+// se usa el idioma del navegador. Al cambiar, se redibuja todo lo que lleva data-i18n y los textos dinámicos.
+const langSelect = document.getElementById("lang-select");
+I18N.LANGS.forEach(l => {
+    const opt = document.createElement("option");
+    opt.value = l.code;
+    opt.textContent = l.name;
+    langSelect.appendChild(opt);
+});
+langSelect.value = I18N.getLang();
+langSelect.addEventListener("change", () => I18N.setLang(langSelect.value, true));
+I18N.onChange(code => {
+    langSelect.value = code;
+    I18N.applyDom();
+    refreshLabels(!!currentPack);
+    renderStatus();
+    // Los avisos y el informe ya generados están en el idioma anterior: se reconvierte (es instantáneo) para traducirlos.
+    if (currentPack && selectedFiles.length && !convertBtn.disabled) runConversion();
+});
+
+I18N.applyDom();
 refreshLabels();

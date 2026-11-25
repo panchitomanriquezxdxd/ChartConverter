@@ -628,3 +628,33 @@ textarea { white-space: pre; overflow: auto; }
 /* Las cajas de código no deben "robar" el deslizamiento de la página */
 textarea { overscroll-behavior: auto; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }
 button, .mode-card, #drop-zone { touch-action: manipulation; }
+
+/* SELECTOR DE IDIOMA */
+.lang-picker {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+    color: #cbd5e1;
+}
+
+.lang-picker select {
+    background: #05070b;
+    color: #fff;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    outline: none;
+    max-width: 60vw;
+    transition: all 0.2s ease;
+}
+
+.lang-picker select:focus-visible {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}

@@ -6,6 +6,10 @@
 (function (root) {
     "use strict";
 
+    // Textos (avisos y errores) en el idioma activo; i18n.js debe cargarse antes que este archivo.
+    const I18N = root.I18N || (typeof require !== "undefined" ? require("./i18n.js") : null);
+    const t = (key, params) => I18N.t(key, params);
+
     const KNOWN_DIFFS = ["easy", "normal", "hard", "erect", "nightmare"];
     const DEFAULT_RATINGS = { easy: 3, normal: 5, hard: 6, erect: 7, nightmare: 8 };
     // Firma que se escribe en el campo "generatedBy" de todo lo que genera la herramienta.
@@ -174,7 +178,7 @@
         if (!skippedEvents.size) return null;
         const total = [...skippedEvents.values()].reduce((a, b) => a + b, 0);
         const names = [...skippedEvents.keys()].slice(0, 6).join(", ");
-        return `${total} evento(s) sin equivalente en V-Slice omitidos (${names}${skippedEvents.size > 6 ? ", …" : ""}).`;
+        return t("warn.skipped", { n: total, names: names + (skippedEvents.size > 6 ? ", …" : "") });
     }
 
     // events.json de Psych (0.6.3 / 0.7 / 1.0): solo se toman los eventos. Las secciones de ese archivo
@@ -187,7 +191,7 @@
         const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
         const list = (rawData && Array.isArray(rawData.events)) ? rawData.events : (song && song.events);
         if (!Array.isArray(list)) {
-            throw new Error("No se encontró el array 'events' (events.json de Psych).");
+            throw new Error(t("conv.noevents"));
         }
         return list;
     }
@@ -201,7 +205,7 @@
         const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
 
         if (!song || !Array.isArray(song.notes)) {
-            throw new Error("No se encontró el array 'notes' (chart de Psych/Kade). Verifica el formato o que tengas el modo correcto seleccionado.");
+            throw new Error(t("conv.nonotes"));
         }
 
         const warnings = [];
@@ -215,7 +219,7 @@
         const isV1 = psychMode === "absolute" ||
             ((psychMode === "073" || psychMode === "104" || psychMode === "auto") && declaredV1);
         if (!isV1 && (psychMode === "073" || psychMode === "104")) {
-            warnings.push(`El chart no declara format "psych_v1": los carriles se interpretaron relativos a mustHitSection (como hace Psych al cargarlo).`);
+            warnings.push(t("warn.relative"));
         }
         const needsLaneRemap = !isV1;
 
@@ -331,7 +335,7 @@
         if (wrapped && (wrapped.strumLines || Array.isArray(wrapped.chart) || wrapped.codenameChart)) chart = wrapped;
 
         if (!Array.isArray(chart.strumLines)) {
-            throw new Error("No se encontró un chart nativo de Codename (strumLines). Si el archivo es de Psych (o un chart CNE en formato legacy), usa el modo 'Psych To V Slice'.");
+            throw new Error(t("conv.nocodename"));
         }
 
         const warnings = [];
@@ -361,7 +365,7 @@
                 notesArr.push(note);
             }
         }
-        if (skippedGf) warnings.push(`${skippedGf} nota(s) de la strumline GF omitidas (V-Slice no tiene carril GF).`);
+        if (skippedGf) warnings.push(t("warn.gf", { n: skippedGf }));
 
         const timeChanges = [{ t: 0, b: 0, bpm: baseBpm, n: 4, d: 4, bt: [4, 4, 4, 4] }];
 
@@ -442,11 +446,11 @@
             try {
                 return parseJson(await zip.files[entry].async("string"));
             } catch (err) {
-                throw new Error(`"${entry}" no es un JSON válido (${err.message}).`);
+                throw new Error(t("err.badjson", { file: entry, msg: err.message }));
             }
         };
         const data = await read("data.json");
-        if (!data) throw new Error("El .FNMM no contiene data.json: no parece un proyecto de Funkin Maker Mobile.");
+        if (!data) throw new Error(t("conv.fnmm.nodata"));
         return { data, events: await read("events.json"), scene: await read("scene.json") };
     }
 
@@ -464,7 +468,7 @@
     function convertFunkinMakerToVSlice(data, extra, file) {
         extra = extra || {};
         if (!data || !Array.isArray(data.strumLines)) {
-            throw new Error("No se encontró 'strumLines' en data.json. Verifica que sea un .FNMM de Funkin Maker Mobile.");
+            throw new Error(t("conv.fnmm.nostrum"));
         }
 
         const warnings = [];
@@ -498,11 +502,11 @@
             });
         });
         notesArr.sort((a, b) => a.t - b.t || a.d - b.d);
-        if (extraLines) warnings.push(`${extraLines} nota(s) de strumlines extra (más de 2) omitidas: V-Slice solo tiene jugador y oponente.`);
-        if (extraLanes) warnings.push(`${extraLanes} nota(s) de carriles extra (más de 4 por strumline) omitidas.`);
-        if (duplicates) warnings.push(`${duplicates} nota(s) duplicada(s) en el mismo carril y tiempo se unificaron.`);
-        if (skinNotes) warnings.push(`${skinNotes} nota(s) con skin distinta a la normal: se conservaron como tipo de nota 'skinN'.`);
-        if (triggerNotes) warnings.push(`${triggerNotes} nota(s) con evento al acertar/fallar (onPressEvent/onMissEvent) pierden ese evento: V-Slice no lo tiene.`);
+        if (extraLines) warnings.push(t("warn.fnmm.extralines", { n: extraLines }));
+        if (extraLanes) warnings.push(t("warn.fnmm.extralanes", { n: extraLanes }));
+        if (duplicates) warnings.push(t("warn.fnmm.dups", { n: duplicates }));
+        if (skinNotes) warnings.push(t("warn.fnmm.skin", { n: skinNotes }));
+        if (triggerNotes) warnings.push(t("warn.fnmm.trigger", { n: triggerNotes }));
 
         // --- Eventos
         // La cámara N de scene.json apunta a un personaje: se elige la strumline cuyo objeto queda más cerca de ella
@@ -571,7 +575,7 @@
         const skippedWarning = skippedEventsWarning(skipped);
         if (skippedWarning) warnings.push(skippedWarning);
 
-        warnings.push(`Funkin Maker no guarda velocidad de notas ni personajes: se usó velocidad ${FNMM_DEFAULT_SPEED}, bf / dad / gf y stage 'stage'. Cámbialos en el chart y la metadata si hace falta.`);
+        warnings.push(t("warn.fnmm.nospeed", { speed: FNMM_DEFAULT_SPEED }));
 
         const songName = baseName(file && file.name) || "Unknown";
         return {
@@ -640,7 +644,7 @@
             .map(tc => ({ t: toNum(tc.t, 0), bpm: toNum(tc.bpm, 0) }))
             .filter(tc => tc.bpm > 0) : [];
         if (!tcs.length) {
-            warnings.push("No se encontró metadata con timeChanges: se asumió 100 BPM. Sube también el archivo -metadata.json para obtener el BPM real.");
+            warnings.push(t("warn.nometa"));
             tcs = [{ t: 0, bpm: 100 }];
         }
         tcs.sort((a, b) => a.t - b.t);
@@ -685,7 +689,7 @@
         let notesByDiff = chart && chart.notes;
         if (Array.isArray(notesByDiff)) notesByDiff = { normal: notesByDiff };
         if (!notesByDiff || typeof notesByDiff !== "object" || !Object.keys(notesByDiff).length) {
-            throw new Error("El chart V-Slice no contiene notas (campo 'notes' con dificultades).");
+            throw new Error(t("conv.novslicenotes"));
         }
 
         const tcs = normalizeTimeChanges(meta, warnings);
@@ -721,7 +725,7 @@
             else { camFollow.push({ t: f.t, x: f.x, y: f.y }); camWasFixed = true; }
         });
         const fixedFocus = allFocus.length - focusEvents.length;
-        if (fixedFocus && !isPsych) warnings.push(`${fixedFocus} FocusCamera con posición fija (sin personaje) omitidos: este formato no tiene equivalente.`);
+        if (fixedFocus && !isPsych) warnings.push(t("warn.fixedfocus", { n: fixedFocus }));
         const zoomEvents = zoomOn ? allEvents.filter(e => e.e === "ZoomCamera") : [];
         // V-Slice puede traer solo "default" en scrollSpeed (sin una entrada por dificultad).
         const speedFor = diff => {
@@ -736,7 +740,7 @@
         const otherEvents = allEvents.filter(e => !handled.includes(e.e));
         if (otherEvents.length) {
             const names = [...new Set(otherEvents.map(e => e.e))].slice(0, 6).join(", ");
-            warnings.push(`${otherEvents.length} evento(s) sin equivalente omitidos (${names}).`);
+            warnings.push(t("warn.skipped.inverse", { n: otherEvents.length, names }));
         }
 
         const files = [];
@@ -869,7 +873,7 @@
                     pushEv(z.t, "Add Camera Zoom", round4(zoom - 1), "");
                 });
             } else if (firstDiff && zoomEvents.length) {
-                warnings.push(`${zoomEvents.length} ZoomCamera omitidos: el chart de Kade no admite eventos.`);
+                warnings.push(t("warn.zoomkade", { n: zoomEvents.length }));
             }
             const events = [...evGroups.entries()].sort((a, b) => a[0] - b[0]).map(([t, list]) => [t, list]);
 
@@ -913,10 +917,10 @@
             files.push({ name: fname, content });
         });
 
-        if (lostFocus) warnings.push(`${lostFocus} cambio(s) de cámara a mitad de sección no caben en el formato legacy (se ajustan al inicio de la sección).`);
-        if (approxZoom) warnings.push(`${approxZoom} ZoomCamera en modo 'direct' aproximados como 'Add Camera Zoom'.`);
-        if (approxScroll) warnings.push(`${approxScroll} ScrollSpeed de un solo lado (jugador u oponente): Psych lo aplica a ambos.`);
-        if (skippedAnim) warnings.push(`${skippedAnim} PlayAnimation omitidos: sin animación o sobre un personaje que no es bf/dad/gf.`);
+        if (lostFocus) warnings.push(t("warn.lostfocus", { n: lostFocus }));
+        if (approxZoom) warnings.push(t("warn.approxzoom", { n: approxZoom }));
+        if (approxScroll) warnings.push(t("warn.approxscroll", { n: approxScroll }));
+        if (skippedAnim) warnings.push(t("warn.skippedanim", { n: skippedAnim }));
 
         if (isCodename) {
             files.push({

@@ -1,7 +1,7 @@
 /* Service worker de Chart Converter: permite instalar la app (PWA) y usarla sin conexión.
  * Estrategia: "stale-while-revalidate" — responde al instante desde caché y se actualiza en segundo plano.
  * Sube CACHE_VERSION cuando cambies archivos para forzar que todos los dispositivos se actualicen. */
-const CACHE_VERSION = "v8";
+const CACHE_VERSION = "v9";
 const CACHE = `chartconverter-${CACHE_VERSION}`;
 
 const ASSETS = [
@@ -9,6 +9,7 @@ const ASSETS = [
     "index.html",
     "style.css",
     "script.js",
+    "i18n.js",
     "converter.js",
     "vendor/jszip.min.js",
     "manifest.webmanifest",

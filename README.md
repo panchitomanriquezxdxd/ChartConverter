@@ -45,6 +45,7 @@ El icono se genera desde un único diseño: `npm run icons` (requiere `rsvg-conv
 ## Estructura
 
 - `converter.js` — núcleo de conversión, sin DOM (se prueba con `npm test`)
+- `i18n.js` — idiomas (Español, English, Português, Português (Brasil), Français, Deutsch, Italiano). Para añadir uno: agrega su entrada en `LANGS` y un diccionario en `DICT` con las mismas claves que `es`; `npm test` verifica que no falte ninguna clave ni marcador `{…}`.
 - `script.js`, `index.html`, `style.css` — interfaz
 - `vendor/jszip.min.js` — JSZip incluido (no depende de internet)
 - `sw.js`, `manifest.webmanifest` — PWA (instalable y offline)

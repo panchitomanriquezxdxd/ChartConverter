@@ -1,0 +1,986 @@
+/* =====================================================================
+ *  Chart Converter — idiomas (sin DOM obligatorio, probable en Node)
+ *  Para añadir un idioma: agrega su entrada en LANGS y un diccionario en DICT
+ *  con las MISMAS claves que "es" (tests/i18n.test.js lo verifica).
+ *  Los marcadores {n}, {file}, … deben conservarse tal cual en cada traducción.
+ * ===================================================================== */
+(function (root) {
+    "use strict";
+
+    const STORAGE_KEY = "cc-lang";
+
+    // Nombre nativo (lo que se ve en el selector) + valor del atributo <html lang>.
+    const LANGS = [
+        { code: "es", name: "Español", html: "es" },
+        { code: "en", name: "English", html: "en" },
+        { code: "pt", name: "Português (Portugal)", html: "pt-PT" },
+        { code: "pt-BR", name: "Português (Brasil)", html: "pt-BR" },
+        { code: "fr", name: "Français", html: "fr" },
+        { code: "de", name: "Deutsch", html: "de" },
+        { code: "it", name: "Italiano", html: "it" }
+    ];
+
+    const es = {
+        "meta.desc": "Convierte charts de FNF entre Psych, Kade, Codename, Funkin Maker Mobile y V-Slice (.fnfc). Funciona en Web, Windows, Linux, Android e iOS.",
+        "lang.label": "Idioma",
+        "dir.title": "🔁 DIRECCIÓN DE LA CONVERSIÓN",
+        "dir.forward": "Normal: Otros → V Slice",
+        "dir.inverse": "Inversa: V Slice → Otros",
+        "src.title": "⚡ FORMATO DE ORIGEN DEL MAPA",
+        "dst.title": "🎯 FORMATO DE DESTINO (DESDE V SLICE)",
+
+        "status.f.tag": "CONFIGURACIÓN ACTIVA",
+        "status.f.psych": "🎯 <strong>Psych Engine:</strong> Compatibilidad automática de estructuras.",
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy):</strong> Re-mapeo automático de carriles según mustHitSection (corrige la inversión Oponente/Jugador).",
+        "status.f.kade": "🔧 <strong>Kade Engine:</strong> Formato vanilla/legacy — carriles relativos a mustHitSection, re-mapeados a absolutos.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1):</strong> Carriles absolutos 0-3 (Player) | 4-7 (Oponente), sin inversiones.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Carriles absolutos + eventos inline de las secciones (ZoomCamera/FocusCamera).",
+        "status.f.pslice": "🫓 <strong>P Slice:</strong> Fork de Psych 1.0 (PE 1.0) — mismos charts psych_v1 absolutos, eventos review-top e inline.",
+        "status.f.codename": "⚡ <strong>Codename Engine:</strong> Conversión de charts nativos (strumLines) a V Slice.",
+        "status.f.events": "🔍 <strong>Eventos Inteligentes:</strong> Auto-mapeo de FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, etc.), PlayAnimation (Hey!, Play Animation) y ScrollSpeed (Change Scroll Speed), en ambos sentidos para Psych.",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych):</strong> sube también el <code>events.json</code> de la canción junto a tus charts; sus eventos se añaden a todas las dificultades.",
+        "status.f.golden": "🔥 <strong>Regla de Oro:</strong> Carril 0-3 (Player) | Carril 4-7 (Oponente).",
+
+        "status.i.tag": "MODO INVERSO ACTIVO",
+        "status.i.inputs": "📦 <strong>Entradas:</strong> <code>-chart.json</code> + <code>-metadata.json</code> de V Slice, o directamente un <code>.fnfc</code> / <code>.zip</code> (se leen solos).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice:</strong> JSON <code>psych_v1</code> con carriles absolutos y eventos de cámara a mitad de sección.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade:</strong> carriles relativos a <code>mustHitSection</code> (re-mapeo exacto inverso).",
+        "status.i.codename": "⚡ <strong>Codename:</strong> strumLines (oponente / jugador / GF), eventos y <code>meta.json</code>.",
+        "status.i.perdiff": "🎚️ <strong>Una salida por dificultad</strong>, con BPM y cambios de BPM reconstruidos desde <code>timeChanges</code>.",
+
+        "drop.aria": "Seleccionar archivos",
+        "drop.forward": "¡Suelta tus charts de <span>{mode}</span> aquí!",
+        "drop.inverse": "¡Suelta tu <span>chart + metadata</span> de V Slice (o un <span>.fnfc</span>) aquí!",
+        "drop.hint.forward": "O haz clic para explorar tus Archivos",
+        "drop.hint.inverse": "Destino: {target} · acepta .json, .fnfc y .zip",
+
+        "btn.convert": "✨ PROCESAR ARCHIVOS ✨",
+        "btn.convert.inverse": "🔄 CONVERTIR A {target}",
+        "btn.zip": "🎁 DESCARGAR PACK (.ZIP)",
+        "btn.zip.inverse": "🎁 DESCARGAR ARCHIVOS CONVERTIDOS (.ZIP)",
+        "btn.clear": "🗑️ Limpiar selección",
+        "btn.support": "🐞 SOPORTE DE ERRORES",
+
+        "title.chart.inverse": "chart convertido",
+        "title.meta.inverse": "informe / archivos",
+        "ph.chart": "Las notas convertidas aparecerán aquí...",
+        "ph.meta": "Los metadatos aparecerán aquí...",
+        "ph.chart.inverse": "El primer archivo convertido aparecerá aquí...",
+        "ph.meta.inverse": "Aquí verás los archivos generados y avisos...",
+
+        "copy.label": "📋 Copiar",
+        "copy.empty": "❌ ¡Vacío!",
+        "copy.done": "✅ ¡Copiado!",
+        "copy.denied": "❌ Sin permisos",
+
+        "extra.title": "🛠️ CONFIGURACIÓN EXTRA DE METADATA",
+        "extra.album": "Activar Álbum Roll",
+        "extra.album.ph": "Nombre del Álbum (Ej: Vol 1)...",
+        "extra.sticker": "Activar Sticker Pack",
+        "extra.sticker.ph": "Nombre de tus Stickers...",
+
+        "ev.title": "🎬 EVENTOS INCLUIDOS AL CONVERTIR",
+        "ev.camera": "Eventos de Cámara (FocusCamera)",
+        "ev.zoom": "Eventos de Zoom (ZoomCamera)",
+
+        "fnfc.title": "💿 COMPRIMIR A FNF CLASSIC (.FNFC)",
+        "fnfc.required": "OBLIGATORIO",
+        "fnfc.opp": "Voices-[Oponente].ogg",
+        "fnfc.ply": "Voices-[Jugador].ogg",
+        "fnfc.btn": "💿 GENERAR PACK FNF CLASSIC (.FNFC)",
+        "fnfc.hint": "El pack .fnfc incluye tus charts + Inst.ogg (obligatorio) + voces. Solo arrastra los archivos convertidos (primero dale a '✨ PROCESAR ARCHIVOS').",
+
+        "list.found": "🔥 ¡{n} archivo(s) detectado(s) listo(s) para reventar!",
+        "list.ignored": "Se ignoraron {n} archivo(s) con formato no válido.",
+        "list.none": "⚠️ No se encontraron archivos .json válidos.",
+        "list.none.inverse": "⚠️ No se encontraron archivos .json, .fnfc o .zip válidos.",
+        "done.ok": "✅ ¡Conversión lista!",
+        "done.warn.forward": "✅ Conversión lista con {n} aviso(s) — revisa los avisos de abajo.",
+        "done.warn.inverse": "✅ Conversión lista con {n} aviso(s) — revisa el panel derecho.",
+
+        "err.convert": "❌ Error al convertir: {msg}",
+        "err.zip": "❌ No se pudo guardar el ZIP: {msg}",
+        "err.fnfc": "❌ No se pudo generar el .fnfc: {msg}",
+        "err.jszip": "❌ No se pudo cargar JSZip (vendor/jszip.min.js). Recarga la página o reinstala la app.",
+        "err.nofiles": "❌ No hay charts cargados. Arrastra o sube los archivos JSON del mapa antes de generar el pack.",
+        "err.noinst": "❌ Debes subir el audio 'Inst.ogg' — es OBLIGATORIO para el pack .fnfc.",
+        "err.notogg": "❌ \"{file}\" no es .ogg. El .fnfc necesita audios OGG (convierte el archivo antes de subirlo).",
+        "err.badjson": "\"{file}\" no es un JSON válido ({msg}).",
+        "err.onlyevents": "Solo subiste events.json. Agrega también el chart de la canción (por ejemplo cancion-hard.json).",
+        "err.nocharts": "No hay ningún chart para convertir.",
+        "err.fileprefix": "\"{file}\": {msg}",
+        "err.zipopen": "No se pudo abrir \"{file}\" como ZIP/.fnfc ({msg}).",
+        "err.nojszip": "JSZip no disponible.",
+        "err.noplugins": "Plugins nativos no disponibles.",
+        "err.readfile": "No se pudo leer el archivo.",
+        "err.novslice": "No se encontró ningún chart de V Slice (archivo con 'notes' por dificultad y 'scrollSpeed'). Si tus archivos son de Psych/Kade/Codename usa la dirección Normal.",
+        "share.dialog": "Guardar o compartir",
+
+        "warn.dupdiff": "Dos archivos apuntan a la dificultad '{diff}': se usó el último (\"{file}\").",
+        "warn.dupdiff.inverse": "La dificultad '{diff}' aparece en más de un chart; se usó la última (\"{file}\").",
+        "warn.nonotes": "{file}: no se encontró ninguna nota; revisa que el modo de origen sea el correcto.",
+        "warn.basemeta": "Se usó la metadata base (\"{file}\") y se ignoró la de una variación.",
+        "warn.extrameta": "Se ignoró metadata adicional (\"{file}\"); solo se usa la primera.",
+        "warn.notvslice": "\"{file}\" no parece un chart ni metadata de V Slice: se ignoró.",
+        "report.song": "Canción: {v}",
+        "report.target": "Destino: {v}",
+        "report.diffs": "Dificultades: {v}",
+        "report.files": "Archivos generados:",
+        "report.warnings": "Avisos:",
+
+        "conv.noevents": "No se encontró el array 'events' (events.json de Psych).",
+        "conv.nonotes": "No se encontró el array 'notes' (chart de Psych/Kade). Verifica el formato o que tengas el modo correcto seleccionado.",
+        "conv.nocodename": "No se encontró un chart nativo de Codename (strumLines). Si el archivo es de Psych (o un chart CNE en formato legacy), usa el modo 'Psych To V Slice'.",
+        "conv.novslicenotes": "El chart V-Slice no contiene notas (campo 'notes' con dificultades).",
+        "warn.relative": "El chart no declara format \"psych_v1\": los carriles se interpretaron relativos a mustHitSection (como hace Psych al cargarlo).",
+        "warn.skipped": "{n} evento(s) sin equivalente en V-Slice omitidos ({names}).",
+        "warn.skipped.inverse": "{n} evento(s) sin equivalente omitidos ({names}).",
+        "warn.gf": "{n} nota(s) de la strumline GF omitidas (V-Slice no tiene carril GF).",
+        "warn.nometa": "No se encontró metadata con timeChanges: se asumió 100 BPM. Sube también el archivo -metadata.json para obtener el BPM real.",
+        "warn.fixedfocus": "{n} FocusCamera con posición fija (sin personaje) omitidos: este formato no tiene equivalente.",
+        "warn.zoomkade": "{n} ZoomCamera omitidos: el chart de Kade no admite eventos.",
+        "warn.lostfocus": "{n} cambio(s) de cámara a mitad de sección no caben en el formato legacy (se ajustan al inicio de la sección).",
+        "warn.approxzoom": "{n} ZoomCamera en modo 'direct' aproximados como 'Add Camera Zoom'.",
+        "warn.approxscroll": "{n} ScrollSpeed de un solo lado (jugador u oponente): Psych lo aplica a ambos.",
+        "warn.skippedanim": "{n} PlayAnimation omitidos: sin animación o sobre un personaje que no es bf/dad/gf.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile:</strong> sube el proyecto <code>.FNMM</code> directamente (se lee solo). Notas y sustains, BPM, cámara (FocusCamera) y zoom (ZoomCamera); los efectos de escena (shake, objetos, GUI) no existen en V Slice y se omiten con aviso.",
+        "drop.forward.fnmm": "¡Suelta tu proyecto <span>.FNMM</span> de Funkin Maker Mobile aquí!",
+        "list.none.fnmm": "⚠️ No se encontraron archivos .FNMM válidos.",
+        "conv.fnmm.nodata": "El .FNMM no contiene data.json: no parece un proyecto de Funkin Maker Mobile.",
+        "conv.fnmm.nostrum": "No se encontró 'strumLines' en data.json. Verifica que sea un .FNMM de Funkin Maker Mobile.",
+        "warn.fnmm.extralines": "{n} nota(s) de strumlines extra (más de 2) omitidas: V-Slice solo tiene jugador y oponente.",
+        "warn.fnmm.extralanes": "{n} nota(s) de carriles extra (más de 4 por strumline) omitidas.",
+        "warn.fnmm.dups": "{n} nota(s) duplicada(s) en el mismo carril y tiempo se unificaron.",
+        "warn.fnmm.skin": "{n} nota(s) con skin distinta a la normal: se conservaron como tipo de nota 'skinN'.",
+        "warn.fnmm.trigger": "{n} nota(s) con evento al acertar/fallar (onPressEvent/onMissEvent) pierden ese evento: V-Slice no lo tiene.",
+        "warn.fnmm.nospeed": "Funkin Maker no guarda velocidad de notas ni personajes: se usó velocidad {speed}, bf / dad / gf y stage 'stage'. Cámbialos en el chart y la metadata si hace falta."
+    };
+
+    const en = {
+        "meta.desc": "Convert FNF charts between Psych, Kade, Codename, Funkin Maker Mobile and V-Slice (.fnfc). Works on Web, Windows, Linux, Android and iOS.",
+        "lang.label": "Language",
+        "dir.title": "🔁 CONVERSION DIRECTION",
+        "dir.forward": "Normal: Others → V Slice",
+        "dir.inverse": "Inverse: V Slice → Others",
+        "src.title": "⚡ SOURCE CHART FORMAT",
+        "dst.title": "🎯 TARGET FORMAT (FROM V SLICE)",
+
+        "status.f.tag": "ACTIVE SETTINGS",
+        "status.f.psych": "🎯 <strong>Psych Engine:</strong> Automatic structure compatibility.",
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy):</strong> Automatic lane re-mapping based on mustHitSection (fixes the Opponent/Player swap).",
+        "status.f.kade": "🔧 <strong>Kade Engine:</strong> Vanilla/legacy format — lanes relative to mustHitSection, re-mapped to absolute.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1):</strong> Absolute lanes 0-3 (Player) | 4-7 (Opponent), no swaps.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Absolute lanes + inline section events (ZoomCamera/FocusCamera).",
+        "status.f.pslice": "🫓 <strong>P Slice:</strong> Psych 1.0 fork (PE 1.0) — same absolute psych_v1 charts, review-top and inline events.",
+        "status.f.codename": "⚡ <strong>Codename Engine:</strong> Converts native charts (strumLines) to V Slice.",
+        "status.f.events": "🔍 <strong>Smart Events:</strong> Auto-mapping of FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, etc.), PlayAnimation (Hey!, Play Animation) and ScrollSpeed (Change Scroll Speed), in both directions for Psych.",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych):</strong> also upload the song's <code>events.json</code> together with your charts; its events are added to every difficulty.",
+        "status.f.golden": "🔥 <strong>Golden Rule:</strong> Lane 0-3 (Player) | Lane 4-7 (Opponent).",
+
+        "status.i.tag": "INVERSE MODE ACTIVE",
+        "status.i.inputs": "📦 <strong>Inputs:</strong> V Slice <code>-chart.json</code> + <code>-metadata.json</code>, or directly a <code>.fnfc</code> / <code>.zip</code> (read automatically).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice:</strong> <code>psych_v1</code> JSON with absolute lanes and mid-section camera events.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade:</strong> lanes relative to <code>mustHitSection</code> (exact inverse re-mapping).",
+        "status.i.codename": "⚡ <strong>Codename:</strong> strumLines (opponent / player / GF), events and <code>meta.json</code>.",
+        "status.i.perdiff": "🎚️ <strong>One output per difficulty</strong>, with BPM and BPM changes rebuilt from <code>timeChanges</code>.",
+
+        "drop.aria": "Select files",
+        "drop.forward": "Drop your <span>{mode}</span> charts here!",
+        "drop.inverse": "Drop your V Slice <span>chart + metadata</span> (or a <span>.fnfc</span>) here!",
+        "drop.hint.forward": "Or click to browse your files",
+        "drop.hint.inverse": "Target: {target} · accepts .json, .fnfc and .zip",
+
+        "btn.convert": "✨ PROCESS FILES ✨",
+        "btn.convert.inverse": "🔄 CONVERT TO {target}",
+        "btn.zip": "🎁 DOWNLOAD PACK (.ZIP)",
+        "btn.zip.inverse": "🎁 DOWNLOAD CONVERTED FILES (.ZIP)",
+        "btn.clear": "🗑️ Clear selection",
+        "btn.support": "🐞 BUG SUPPORT",
+
+        "title.chart.inverse": "converted chart",
+        "title.meta.inverse": "report / files",
+        "ph.chart": "The converted notes will appear here...",
+        "ph.meta": "The metadata will appear here...",
+        "ph.chart.inverse": "The first converted file will appear here...",
+        "ph.meta.inverse": "Here you will see the generated files and warnings...",
+
+        "copy.label": "📋 Copy",
+        "copy.empty": "❌ Empty!",
+        "copy.done": "✅ Copied!",
+        "copy.denied": "❌ No permission",
+
+        "extra.title": "🛠️ EXTRA METADATA SETTINGS",
+        "extra.album": "Enable Album Roll",
+        "extra.album.ph": "Album name (e.g. Vol 1)...",
+        "extra.sticker": "Enable Sticker Pack",
+        "extra.sticker.ph": "Your sticker pack name...",
+
+        "ev.title": "🎬 EVENTS INCLUDED WHEN CONVERTING",
+        "ev.camera": "Camera events (FocusCamera)",
+        "ev.zoom": "Zoom events (ZoomCamera)",
+
+        "fnfc.title": "💿 PACK AS FNF CLASSIC (.FNFC)",
+        "fnfc.required": "REQUIRED",
+        "fnfc.opp": "Voices-[Opponent].ogg",
+        "fnfc.ply": "Voices-[Player].ogg",
+        "fnfc.btn": "💿 GENERATE FNF CLASSIC PACK (.FNFC)",
+        "fnfc.hint": "The .fnfc pack includes your charts + Inst.ogg (required) + vocals. Just drag in the files to convert (first press '✨ PROCESS FILES').",
+
+        "list.found": "🔥 {n} file(s) detected and ready to go!",
+        "list.ignored": "{n} file(s) with an invalid format were ignored.",
+        "list.none": "⚠️ No valid .json files were found.",
+        "list.none.inverse": "⚠️ No valid .json, .fnfc or .zip files were found.",
+        "done.ok": "✅ Conversion complete!",
+        "done.warn.forward": "✅ Conversion complete with {n} warning(s) — check the warnings below.",
+        "done.warn.inverse": "✅ Conversion complete with {n} warning(s) — check the right-hand panel.",
+
+        "err.convert": "❌ Conversion error: {msg}",
+        "err.zip": "❌ Could not save the ZIP: {msg}",
+        "err.fnfc": "❌ Could not generate the .fnfc: {msg}",
+        "err.jszip": "❌ Could not load JSZip (vendor/jszip.min.js). Reload the page or reinstall the app.",
+        "err.nofiles": "❌ No charts loaded. Drag in or upload the song's JSON files before generating the pack.",
+        "err.noinst": "❌ You must upload the 'Inst.ogg' audio — it is REQUIRED for the .fnfc pack.",
+        "err.notogg": "❌ \"{file}\" is not .ogg. The .fnfc needs OGG audio (convert the file before uploading it).",
+        "err.badjson": "\"{file}\" is not valid JSON ({msg}).",
+        "err.onlyevents": "You only uploaded events.json. Also add the song's chart (for example song-hard.json).",
+        "err.nocharts": "There is no chart to convert.",
+        "err.fileprefix": "\"{file}\": {msg}",
+        "err.zipopen": "Could not open \"{file}\" as a ZIP/.fnfc ({msg}).",
+        "err.nojszip": "JSZip is not available.",
+        "err.noplugins": "Native plugins are not available.",
+        "err.readfile": "Could not read the file.",
+        "err.novslice": "No V Slice chart was found (a file with 'notes' per difficulty and 'scrollSpeed'). If your files are from Psych/Kade/Codename, use the Normal direction.",
+        "share.dialog": "Save or share",
+
+        "warn.dupdiff": "Two files point to the '{diff}' difficulty: the last one was used (\"{file}\").",
+        "warn.dupdiff.inverse": "The '{diff}' difficulty appears in more than one chart; the last one was used (\"{file}\").",
+        "warn.nonotes": "{file}: no notes were found; check that the source mode is correct.",
+        "warn.basemeta": "The base metadata (\"{file}\") was used and a variation's metadata was ignored.",
+        "warn.extrameta": "Additional metadata was ignored (\"{file}\"); only the first one is used.",
+        "warn.notvslice": "\"{file}\" does not look like a V Slice chart or metadata: it was ignored.",
+        "report.song": "Song: {v}",
+        "report.target": "Target: {v}",
+        "report.diffs": "Difficulties: {v}",
+        "report.files": "Generated files:",
+        "report.warnings": "Warnings:",
+
+        "conv.noevents": "The 'events' array was not found (Psych events.json).",
+        "conv.nonotes": "The 'notes' array was not found (Psych/Kade chart). Check the format or that the correct mode is selected.",
+        "conv.nocodename": "No native Codename chart (strumLines) was found. If the file is from Psych (or a CNE chart in legacy format), use the 'Psych To V Slice' mode.",
+        "conv.novslicenotes": "The V-Slice chart contains no notes ('notes' field with difficulties).",
+        "warn.relative": "The chart does not declare format \"psych_v1\": lanes were interpreted relative to mustHitSection (as Psych does when loading it).",
+        "warn.skipped": "{n} event(s) with no V-Slice equivalent were skipped ({names}).",
+        "warn.skipped.inverse": "{n} event(s) with no equivalent were skipped ({names}).",
+        "warn.gf": "{n} note(s) from the GF strumline were skipped (V-Slice has no GF lane).",
+        "warn.nometa": "No metadata with timeChanges was found: 100 BPM was assumed. Also upload the -metadata.json file to get the real BPM.",
+        "warn.fixedfocus": "{n} FocusCamera event(s) with a fixed position (no character) were skipped: this format has no equivalent.",
+        "warn.zoomkade": "{n} ZoomCamera event(s) were skipped: the Kade chart does not support events.",
+        "warn.lostfocus": "{n} mid-section camera change(s) do not fit the legacy format (they are moved to the start of the section).",
+        "warn.approxzoom": "{n} ZoomCamera event(s) in 'direct' mode were approximated as 'Add Camera Zoom'.",
+        "warn.approxscroll": "{n} one-sided ScrollSpeed event(s) (player or opponent): Psych applies them to both.",
+        "warn.skippedanim": "{n} PlayAnimation event(s) were skipped: no animation, or a character that is not bf/dad/gf.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile:</strong> upload the <code>.FNMM</code> project directly (it is read automatically). Notes and sustains, BPM, camera (FocusCamera) and zoom (ZoomCamera); scene effects (shake, objects, GUI) do not exist in V Slice and are skipped with a warning.",
+        "drop.forward.fnmm": "Drop your Funkin Maker Mobile <span>.FNMM</span> project here!",
+        "list.none.fnmm": "⚠️ No valid .FNMM files were found.",
+        "conv.fnmm.nodata": "The .FNMM does not contain data.json: it does not look like a Funkin Maker Mobile project.",
+        "conv.fnmm.nostrum": "'strumLines' was not found in data.json. Check that it is a .FNMM from Funkin Maker Mobile.",
+        "warn.fnmm.extralines": "{n} note(s) from extra strumlines (more than 2) were skipped: V-Slice only has player and opponent.",
+        "warn.fnmm.extralanes": "{n} note(s) from extra lanes (more than 4 per strumline) were skipped.",
+        "warn.fnmm.dups": "{n} duplicate note(s) on the same lane and time were merged.",
+        "warn.fnmm.skin": "{n} note(s) with a non-default skin: kept as note kind 'skinN'.",
+        "warn.fnmm.trigger": "{n} note(s) with a hit/miss event (onPressEvent/onMissEvent) lose that event: V-Slice has no equivalent.",
+        "warn.fnmm.nospeed": "Funkin Maker does not store note speed or characters: speed {speed}, bf / dad / gf and stage 'stage' were used. Change them in the chart and metadata if needed."
+    };
+
+    const pt = {
+        "meta.desc": "Converte charts de FNF entre Psych, Kade, Codename, Funkin Maker Mobile e V-Slice (.fnfc). Funciona na Web, Windows, Linux, Android e iOS.",
+        "lang.label": "Idioma",
+        "dir.title": "🔁 SENTIDO DA CONVERSÃO",
+        "dir.forward": "Normal: Outros → V Slice",
+        "dir.inverse": "Inversa: V Slice → Outros",
+        "src.title": "⚡ FORMATO DE ORIGEM DO MAPA",
+        "dst.title": "🎯 FORMATO DE DESTINO (A PARTIR DE V SLICE)",
+
+        "status.f.tag": "CONFIGURAÇÃO ATIVA",
+        "status.f.psych": "🎯 <strong>Psych Engine:</strong> Compatibilidade automática de estruturas.",
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy):</strong> Remapeamento automático das pistas segundo o mustHitSection (corrige a inversão Oponente/Jogador).",
+        "status.f.kade": "🔧 <strong>Kade Engine:</strong> Formato vanilla/legacy — pistas relativas ao mustHitSection, remapeadas para absolutas.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1):</strong> Pistas absolutas 0-3 (Jogador) | 4-7 (Oponente), sem inversões.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Pistas absolutas + eventos inline das secções (ZoomCamera/FocusCamera).",
+        "status.f.pslice": "🫓 <strong>P Slice:</strong> Fork do Psych 1.0 (PE 1.0) — os mesmos charts psych_v1 absolutos, eventos review-top e inline.",
+        "status.f.codename": "⚡ <strong>Codename Engine:</strong> Conversão de charts nativos (strumLines) para V Slice.",
+        "status.f.events": "🔍 <strong>Eventos Inteligentes:</strong> Mapeamento automático de FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, etc.), PlayAnimation (Hey!, Play Animation) e ScrollSpeed (Change Scroll Speed), nos dois sentidos para o Psych.",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych):</strong> carrega também o <code>events.json</code> da música juntamente com os teus charts; os seus eventos são adicionados a todas as dificuldades.",
+        "status.f.golden": "🔥 <strong>Regra de Ouro:</strong> Pista 0-3 (Jogador) | Pista 4-7 (Oponente).",
+
+        "status.i.tag": "MODO INVERSO ATIVO",
+        "status.i.inputs": "📦 <strong>Entradas:</strong> <code>-chart.json</code> + <code>-metadata.json</code> do V Slice, ou diretamente um <code>.fnfc</code> / <code>.zip</code> (são lidos automaticamente).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice:</strong> JSON <code>psych_v1</code> com pistas absolutas e eventos de câmara a meio da secção.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade:</strong> pistas relativas ao <code>mustHitSection</code> (remapeamento inverso exato).",
+        "status.i.codename": "⚡ <strong>Codename:</strong> strumLines (oponente / jogador / GF), eventos e <code>meta.json</code>.",
+        "status.i.perdiff": "🎚️ <strong>Uma saída por dificuldade</strong>, com BPM e mudanças de BPM reconstruídos a partir de <code>timeChanges</code>.",
+
+        "drop.aria": "Selecionar ficheiros",
+        "drop.forward": "Larga aqui os teus charts de <span>{mode}</span>!",
+        "drop.inverse": "Larga aqui o teu <span>chart + metadata</span> do V Slice (ou um <span>.fnfc</span>)!",
+        "drop.hint.forward": "Ou clica para procurar nos teus ficheiros",
+        "drop.hint.inverse": "Destino: {target} · aceita .json, .fnfc e .zip",
+
+        "btn.convert": "✨ PROCESSAR FICHEIROS ✨",
+        "btn.convert.inverse": "🔄 CONVERTER PARA {target}",
+        "btn.zip": "🎁 TRANSFERIR PACOTE (.ZIP)",
+        "btn.zip.inverse": "🎁 TRANSFERIR FICHEIROS CONVERTIDOS (.ZIP)",
+        "btn.clear": "🗑️ Limpar seleção",
+        "btn.support": "🐞 SUPORTE DE ERROS",
+
+        "title.chart.inverse": "chart convertido",
+        "title.meta.inverse": "relatório / ficheiros",
+        "ph.chart": "As notas convertidas aparecerão aqui...",
+        "ph.meta": "Os metadados aparecerão aqui...",
+        "ph.chart.inverse": "O primeiro ficheiro convertido aparecerá aqui...",
+        "ph.meta.inverse": "Aqui verás os ficheiros gerados e os avisos...",
+
+        "copy.label": "📋 Copiar",
+        "copy.empty": "❌ Vazio!",
+        "copy.done": "✅ Copiado!",
+        "copy.denied": "❌ Sem permissões",
+
+        "extra.title": "🛠️ CONFIGURAÇÃO EXTRA DE METADATA",
+        "extra.album": "Ativar Album Roll",
+        "extra.album.ph": "Nome do álbum (ex.: Vol 1)...",
+        "extra.sticker": "Ativar Sticker Pack",
+        "extra.sticker.ph": "Nome dos teus stickers...",
+
+        "ev.title": "🎬 EVENTOS INCLUÍDOS AO CONVERTER",
+        "ev.camera": "Eventos de câmara (FocusCamera)",
+        "ev.zoom": "Eventos de zoom (ZoomCamera)",
+
+        "fnfc.title": "💿 COMPRIMIR PARA FNF CLASSIC (.FNFC)",
+        "fnfc.required": "OBRIGATÓRIO",
+        "fnfc.opp": "Voices-[Oponente].ogg",
+        "fnfc.ply": "Voices-[Jogador].ogg",
+        "fnfc.btn": "💿 GERAR PACOTE FNF CLASSIC (.FNFC)",
+        "fnfc.hint": "O pacote .fnfc inclui os teus charts + Inst.ogg (obrigatório) + vozes. Basta arrastar os ficheiros convertidos (primeiro carrega em '✨ PROCESSAR FICHEIROS').",
+
+        "list.found": "🔥 {n} ficheiro(s) detetado(s) e pronto(s) a arrasar!",
+        "list.ignored": "Foram ignorados {n} ficheiro(s) com formato inválido.",
+        "list.none": "⚠️ Não foram encontrados ficheiros .json válidos.",
+        "list.none.inverse": "⚠️ Não foram encontrados ficheiros .json, .fnfc ou .zip válidos.",
+        "done.ok": "✅ Conversão concluída!",
+        "done.warn.forward": "✅ Conversão concluída com {n} aviso(s) — vê os avisos abaixo.",
+        "done.warn.inverse": "✅ Conversão concluída com {n} aviso(s) — vê o painel da direita.",
+
+        "err.convert": "❌ Erro ao converter: {msg}",
+        "err.zip": "❌ Não foi possível guardar o ZIP: {msg}",
+        "err.fnfc": "❌ Não foi possível gerar o .fnfc: {msg}",
+        "err.jszip": "❌ Não foi possível carregar o JSZip (vendor/jszip.min.js). Recarrega a página ou reinstala a aplicação.",
+        "err.nofiles": "❌ Não há charts carregados. Arrasta ou carrega os ficheiros JSON do mapa antes de gerar o pacote.",
+        "err.noinst": "❌ Tens de carregar o áudio 'Inst.ogg' — é OBRIGATÓRIO para o pacote .fnfc.",
+        "err.notogg": "❌ \"{file}\" não é .ogg. O .fnfc precisa de áudios OGG (converte o ficheiro antes de o carregar).",
+        "err.badjson": "\"{file}\" não é um JSON válido ({msg}).",
+        "err.onlyevents": "Só carregaste o events.json. Adiciona também o chart da música (por exemplo musica-hard.json).",
+        "err.nocharts": "Não há nenhum chart para converter.",
+        "err.fileprefix": "\"{file}\": {msg}",
+        "err.zipopen": "Não foi possível abrir \"{file}\" como ZIP/.fnfc ({msg}).",
+        "err.nojszip": "JSZip indisponível.",
+        "err.noplugins": "Plugins nativos indisponíveis.",
+        "err.readfile": "Não foi possível ler o ficheiro.",
+        "err.novslice": "Não foi encontrado nenhum chart de V Slice (ficheiro com 'notes' por dificuldade e 'scrollSpeed'). Se os teus ficheiros são de Psych/Kade/Codename, usa o sentido Normal.",
+        "share.dialog": "Guardar ou partilhar",
+
+        "warn.dupdiff": "Dois ficheiros apontam para a dificuldade '{diff}': foi usado o último (\"{file}\").",
+        "warn.dupdiff.inverse": "A dificuldade '{diff}' aparece em mais de um chart; foi usada a última (\"{file}\").",
+        "warn.nonotes": "{file}: não foi encontrada nenhuma nota; verifica se o modo de origem está correto.",
+        "warn.basemeta": "Foi usada a metadata base (\"{file}\") e a de uma variação foi ignorada.",
+        "warn.extrameta": "Foi ignorada metadata adicional (\"{file}\"); só se usa a primeira.",
+        "warn.notvslice": "\"{file}\" não parece um chart nem metadata de V Slice: foi ignorado.",
+        "report.song": "Música: {v}",
+        "report.target": "Destino: {v}",
+        "report.diffs": "Dificuldades: {v}",
+        "report.files": "Ficheiros gerados:",
+        "report.warnings": "Avisos:",
+
+        "conv.noevents": "Não foi encontrado o array 'events' (events.json do Psych).",
+        "conv.nonotes": "Não foi encontrado o array 'notes' (chart de Psych/Kade). Verifica o formato ou se tens o modo correto selecionado.",
+        "conv.nocodename": "Não foi encontrado um chart nativo do Codename (strumLines). Se o ficheiro é do Psych (ou um chart CNE em formato legacy), usa o modo 'Psych To V Slice'.",
+        "conv.novslicenotes": "O chart V-Slice não contém notas (campo 'notes' com dificuldades).",
+        "warn.relative": "O chart não declara format \"psych_v1\": as pistas foram interpretadas como relativas ao mustHitSection (como o Psych faz ao carregá-lo).",
+        "warn.skipped": "{n} evento(s) sem equivalente no V-Slice omitido(s) ({names}).",
+        "warn.skipped.inverse": "{n} evento(s) sem equivalente omitido(s) ({names}).",
+        "warn.gf": "{n} nota(s) da strumline GF omitida(s) (o V-Slice não tem pista GF).",
+        "warn.nometa": "Não foi encontrada metadata com timeChanges: assumiram-se 100 BPM. Carrega também o ficheiro -metadata.json para obter o BPM real.",
+        "warn.fixedfocus": "{n} FocusCamera com posição fixa (sem personagem) omitido(s): este formato não tem equivalente.",
+        "warn.zoomkade": "{n} ZoomCamera omitido(s): o chart do Kade não admite eventos.",
+        "warn.lostfocus": "{n} mudança(s) de câmara a meio da secção não cabem no formato legacy (ajustam-se ao início da secção).",
+        "warn.approxzoom": "{n} ZoomCamera em modo 'direct' aproximado(s) como 'Add Camera Zoom'.",
+        "warn.approxscroll": "{n} ScrollSpeed de um só lado (jogador ou oponente): o Psych aplica-o a ambos.",
+        "warn.skippedanim": "{n} PlayAnimation omitido(s): sem animação ou sobre uma personagem que não é bf/dad/gf.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile:</strong> carrega diretamente o projeto <code>.FNMM</code> (é lido automaticamente). Notas e sustains, BPM, câmara (FocusCamera) e zoom (ZoomCamera); os efeitos de cena (shake, objetos, GUI) não existem no V Slice e são omitidos com um aviso.",
+        "drop.forward.fnmm": "Larga aqui o teu projeto <span>.FNMM</span> do Funkin Maker Mobile!",
+        "list.none.fnmm": "⚠️ Não foram encontrados ficheiros .FNMM válidos.",
+        "conv.fnmm.nodata": "O .FNMM não contém data.json: não parece um projeto do Funkin Maker Mobile.",
+        "conv.fnmm.nostrum": "Não foi encontrado 'strumLines' em data.json. Verifica se é um .FNMM do Funkin Maker Mobile.",
+        "warn.fnmm.extralines": "{n} nota(s) de strumlines extra (mais de 2) omitida(s): o V-Slice só tem jogador e oponente.",
+        "warn.fnmm.extralanes": "{n} nota(s) de lanes extra (mais de 4 por strumline) omitida(s).",
+        "warn.fnmm.dups": "{n} nota(s) duplicada(s) na mesma lane e no mesmo instante foram unificadas.",
+        "warn.fnmm.skin": "{n} nota(s) com skin diferente da normal: mantidas como tipo de nota 'skinN'.",
+        "warn.fnmm.trigger": "{n} nota(s) com evento ao acertar/falhar (onPressEvent/onMissEvent) perdem esse evento: o V-Slice não o tem.",
+        "warn.fnmm.nospeed": "O Funkin Maker não guarda a velocidade das notas nem as personagens: foi usada a velocidade {speed}, bf / dad / gf e o stage 'stage'. Altera-os no chart e na metadata, se for preciso."
+    };
+
+    // Português do Brasil: parte do português de Portugal y solo cambia lo que difiere.
+    const ptBR = Object.assign({}, pt, {
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy):</strong> Remapeamento automático das lanes de acordo com o mustHitSection (corrige a inversão Oponente/Jogador).",
+        "status.f.kade": "🔧 <strong>Kade Engine:</strong> Formato vanilla/legacy — lanes relativas ao mustHitSection, remapeadas para absolutas.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1):</strong> Lanes absolutas 0-3 (Jogador) | 4-7 (Oponente), sem inversões.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Lanes absolutas + eventos inline das seções (ZoomCamera/FocusCamera).",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych):</strong> envie também o <code>events.json</code> da música junto com seus charts; os eventos dele são adicionados a todas as dificuldades.",
+        "status.f.golden": "🔥 <strong>Regra de Ouro:</strong> Lane 0-3 (Jogador) | Lane 4-7 (Oponente).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice:</strong> JSON <code>psych_v1</code> com lanes absolutas e eventos de câmera no meio da seção.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade:</strong> lanes relativas ao <code>mustHitSection</code> (remapeamento inverso exato).",
+        "status.i.inputs": "📦 <strong>Entradas:</strong> <code>-chart.json</code> + <code>-metadata.json</code> do V Slice, ou diretamente um <code>.fnfc</code> / <code>.zip</code> (são lidos automaticamente).",
+        "status.i.perdiff": "🎚️ <strong>Uma saída por dificuldade</strong>, com BPM e mudanças de BPM reconstruídos a partir de <code>timeChanges</code>.",
+        "ev.camera": "Eventos de câmera (FocusCamera)",
+        "status.f.events": "🔍 <strong>Eventos Inteligentes:</strong> Mapeamento automático de FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, etc.), PlayAnimation (Hey!, Play Animation) e ScrollSpeed (Change Scroll Speed), nos dois sentidos para o Psych.",
+        "drop.aria": "Selecionar arquivos",
+        "drop.forward": "Solte aqui seus charts de <span>{mode}</span>!",
+        "drop.inverse": "Solte aqui seu <span>chart + metadata</span> do V Slice (ou um <span>.fnfc</span>)!",
+        "drop.hint.forward": "Ou clique para procurar nos seus arquivos",
+        "btn.convert": "✨ PROCESSAR ARQUIVOS ✨",
+        "btn.zip": "🎁 BAIXAR PACOTE (.ZIP)",
+        "btn.zip.inverse": "🎁 BAIXAR ARQUIVOS CONVERTIDOS (.ZIP)",
+        "btn.clear": "🗑️ Limpar seleção",
+        "btn.support": "🐞 SUPORTE DE ERROS",
+        "title.meta.inverse": "relatório / arquivos",
+        "ph.chart": "As notas convertidas aparecerão aqui...",
+        "ph.chart.inverse": "O primeiro arquivo convertido aparecerá aqui...",
+        "ph.meta.inverse": "Aqui você verá os arquivos gerados e os avisos...",
+        "copy.denied": "❌ Sem permissão",
+        "extra.album.ph": "Nome do álbum (ex.: Vol 1)...",
+        "extra.sticker.ph": "Nome dos seus stickers...",
+        "fnfc.hint": "O pacote .fnfc inclui seus charts + Inst.ogg (obrigatório) + vozes. Basta arrastar os arquivos convertidos (primeiro clique em '✨ PROCESSAR ARQUIVOS').",
+        "list.found": "🔥 {n} arquivo(s) detectado(s) e pronto(s) para detonar!",
+        "list.ignored": "{n} arquivo(s) com formato inválido foram ignorados.",
+        "list.none": "⚠️ Nenhum arquivo .json válido foi encontrado.",
+        "list.none.inverse": "⚠️ Nenhum arquivo .json, .fnfc ou .zip válido foi encontrado.",
+        "done.warn.forward": "✅ Conversão concluída com {n} aviso(s) — confira os avisos abaixo.",
+        "done.warn.inverse": "✅ Conversão concluída com {n} aviso(s) — confira o painel da direita.",
+        "err.zip": "❌ Não foi possível salvar o ZIP: {msg}",
+        "err.jszip": "❌ Não foi possível carregar o JSZip (vendor/jszip.min.js). Recarregue a página ou reinstale o app.",
+        "err.nofiles": "❌ Não há charts carregados. Arraste ou envie os arquivos JSON do mapa antes de gerar o pacote.",
+        "err.noinst": "❌ Você precisa enviar o áudio 'Inst.ogg' — ele é OBRIGATÓRIO para o pacote .fnfc.",
+        "err.notogg": "❌ \"{file}\" não é .ogg. O .fnfc precisa de áudios OGG (converta o arquivo antes de enviá-lo).",
+        "err.onlyevents": "Você enviou só o events.json. Adicione também o chart da música (por exemplo musica-hard.json).",
+        "err.zipopen": "Não foi possível abrir \"{file}\" como ZIP/.fnfc ({msg}).",
+        "err.readfile": "Não foi possível ler o arquivo.",
+        "err.novslice": "Nenhum chart de V Slice foi encontrado (arquivo com 'notes' por dificuldade e 'scrollSpeed'). Se seus arquivos são de Psych/Kade/Codename, use a direção Normal.",
+        "dir.title": "🔁 DIREÇÃO DA CONVERSÃO",
+        "share.dialog": "Salvar ou compartilhar",
+        "warn.dupdiff": "Dois arquivos apontam para a dificuldade '{diff}': o último foi usado (\"{file}\").",
+        "warn.nonotes": "{file}: nenhuma nota foi encontrada; confira se o modo de origem está correto.",
+        "warn.basemeta": "A metadata base (\"{file}\") foi usada e a de uma variação foi ignorada.",
+        "warn.extrameta": "Metadata adicional foi ignorada (\"{file}\"); só a primeira é usada.",
+        "warn.notvslice": "\"{file}\" não parece um chart nem metadata de V Slice: foi ignorado.",
+        "report.files": "Arquivos gerados:",
+        "conv.nocodename": "Nenhum chart nativo do Codename (strumLines) foi encontrado. Se o arquivo é do Psych (ou um chart CNE em formato legacy), use o modo 'Psych To V Slice'.",
+        "conv.nonotes": "O array 'notes' não foi encontrado (chart de Psych/Kade). Confira o formato ou se o modo correto está selecionado.",
+        "warn.relative": "O chart não declara format \"psych_v1\": as lanes foram interpretadas como relativas ao mustHitSection (como o Psych faz ao carregá-lo).",
+        "warn.gf": "{n} nota(s) da strumline GF omitida(s) (o V-Slice não tem lane GF).",
+        "warn.nometa": "Nenhuma metadata com timeChanges foi encontrada: 100 BPM foram assumidos. Envie também o arquivo -metadata.json para obter o BPM real.",
+        "warn.fixedfocus": "{n} FocusCamera com posição fixa (sem personagem) omitido(s): este formato não tem equivalente.",
+        "warn.lostfocus": "{n} mudança(s) de câmera no meio da seção não cabem no formato legacy (são ajustadas para o início da seção).",
+        "warn.skippedanim": "{n} PlayAnimation omitido(s): sem animação ou em um personagem que não é bf/dad/gf.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile:</strong> envie o projeto <code>.FNMM</code> diretamente (ele é lido automaticamente). Notas e sustains, BPM, câmera (FocusCamera) e zoom (ZoomCamera); os efeitos de cena (shake, objetos, GUI) não existem no V Slice e são omitidos com um aviso.",
+        "drop.forward.fnmm": "Solte aqui seu projeto <span>.FNMM</span> do Funkin Maker Mobile!",
+        "list.none.fnmm": "⚠️ Nenhum arquivo .FNMM válido foi encontrado.",
+        "conv.fnmm.nodata": "O .FNMM não contém data.json: não parece um projeto do Funkin Maker Mobile.",
+        "conv.fnmm.nostrum": "'strumLines' não foi encontrado em data.json. Verifique se é um .FNMM do Funkin Maker Mobile.",
+        "warn.fnmm.extralines": "{n} nota(s) de strumlines extras (mais de 2) omitida(s): o V-Slice só tem jogador e oponente.",
+        "warn.fnmm.extralanes": "{n} nota(s) de lanes extras (mais de 4 por strumline) omitida(s).",
+        "warn.fnmm.dups": "{n} nota(s) duplicada(s) na mesma lane e no mesmo tempo foram unificadas.",
+        "warn.fnmm.skin": "{n} nota(s) com skin diferente da normal: mantidas como tipo de nota 'skinN'.",
+        "warn.fnmm.trigger": "{n} nota(s) com evento ao acertar/errar (onPressEvent/onMissEvent) perdem esse evento: o V-Slice não tem isso.",
+        "warn.fnmm.nospeed": "O Funkin Maker não guarda a velocidade das notas nem os personagens: foi usada a velocidade {speed}, bf / dad / gf e o stage 'stage'. Altere-os no chart e na metadata se precisar."
+    });
+
+    const fr = {
+        "meta.desc": "Convertissez des charts FNF entre Psych, Kade, Codename, Funkin Maker Mobile et V-Slice (.fnfc). Fonctionne sur Web, Windows, Linux, Android et iOS.",
+        "lang.label": "Langue",
+        "dir.title": "🔁 SENS DE LA CONVERSION",
+        "dir.forward": "Normal : Autres → V Slice",
+        "dir.inverse": "Inverse : V Slice → Autres",
+        "src.title": "⚡ FORMAT D'ORIGINE DU CHART",
+        "dst.title": "🎯 FORMAT DE DESTINATION (DEPUIS V SLICE)",
+
+        "status.f.tag": "CONFIGURATION ACTIVE",
+        "status.f.psych": "🎯 <strong>Psych Engine :</strong> Compatibilité automatique des structures.",
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy) :</strong> Remappage automatique des pistes selon mustHitSection (corrige l'inversion Adversaire/Joueur).",
+        "status.f.kade": "🔧 <strong>Kade Engine :</strong> Format vanilla/legacy — pistes relatives à mustHitSection, remappées en absolu.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1) :</strong> Pistes absolues 0-3 (Joueur) | 4-7 (Adversaire), sans inversion.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1) :</strong> Pistes absolues + événements inline des sections (ZoomCamera/FocusCamera).",
+        "status.f.pslice": "🫓 <strong>P Slice :</strong> Fork de Psych 1.0 (PE 1.0) — mêmes charts psych_v1 absolus, événements review-top et inline.",
+        "status.f.codename": "⚡ <strong>Codename Engine :</strong> Conversion des charts natifs (strumLines) vers V Slice.",
+        "status.f.events": "🔍 <strong>Événements intelligents :</strong> Mappage automatique de FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, etc.), PlayAnimation (Hey!, Play Animation) et ScrollSpeed (Change Scroll Speed), dans les deux sens pour Psych.",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych) :</strong> importez aussi le <code>events.json</code> de la chanson avec vos charts ; ses événements sont ajoutés à toutes les difficultés.",
+        "status.f.golden": "🔥 <strong>Règle d'or :</strong> Piste 0-3 (Joueur) | Piste 4-7 (Adversaire).",
+
+        "status.i.tag": "MODE INVERSE ACTIF",
+        "status.i.inputs": "📦 <strong>Entrées :</strong> <code>-chart.json</code> + <code>-metadata.json</code> de V Slice, ou directement un <code>.fnfc</code> / <code>.zip</code> (lus automatiquement).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice :</strong> JSON <code>psych_v1</code> avec pistes absolues et événements de caméra en milieu de section.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade :</strong> pistes relatives à <code>mustHitSection</code> (remappage inverse exact).",
+        "status.i.codename": "⚡ <strong>Codename :</strong> strumLines (adversaire / joueur / GF), événements et <code>meta.json</code>.",
+        "status.i.perdiff": "🎚️ <strong>Une sortie par difficulté</strong>, avec le BPM et ses changements reconstruits depuis <code>timeChanges</code>.",
+
+        "drop.aria": "Sélectionner des fichiers",
+        "drop.forward": "Déposez ici vos charts <span>{mode}</span> !",
+        "drop.inverse": "Déposez ici votre <span>chart + metadata</span> V Slice (ou un <span>.fnfc</span>) !",
+        "drop.hint.forward": "Ou cliquez pour parcourir vos fichiers",
+        "drop.hint.inverse": "Destination : {target} · accepte .json, .fnfc et .zip",
+
+        "btn.convert": "✨ TRAITER LES FICHIERS ✨",
+        "btn.convert.inverse": "🔄 CONVERTIR VERS {target}",
+        "btn.zip": "🎁 TÉLÉCHARGER LE PACK (.ZIP)",
+        "btn.zip.inverse": "🎁 TÉLÉCHARGER LES FICHIERS CONVERTIS (.ZIP)",
+        "btn.clear": "🗑️ Effacer la sélection",
+        "btn.support": "🐞 SUPPORT DES BUGS",
+
+        "title.chart.inverse": "chart converti",
+        "title.meta.inverse": "rapport / fichiers",
+        "ph.chart": "Les notes converties apparaîtront ici...",
+        "ph.meta": "Les métadonnées apparaîtront ici...",
+        "ph.chart.inverse": "Le premier fichier converti apparaîtra ici...",
+        "ph.meta.inverse": "Vous verrez ici les fichiers générés et les avertissements...",
+
+        "copy.label": "📋 Copier",
+        "copy.empty": "❌ Vide !",
+        "copy.done": "✅ Copié !",
+        "copy.denied": "❌ Sans autorisation",
+
+        "extra.title": "🛠️ PARAMÈTRES SUPPLÉMENTAIRES DE METADATA",
+        "extra.album": "Activer l'Album Roll",
+        "extra.album.ph": "Nom de l'album (ex. : Vol 1)...",
+        "extra.sticker": "Activer le Sticker Pack",
+        "extra.sticker.ph": "Nom de vos stickers...",
+
+        "ev.title": "🎬 ÉVÉNEMENTS INCLUS À LA CONVERSION",
+        "ev.camera": "Événements de caméra (FocusCamera)",
+        "ev.zoom": "Événements de zoom (ZoomCamera)",
+
+        "fnfc.title": "💿 COMPRESSER EN FNF CLASSIC (.FNFC)",
+        "fnfc.required": "OBLIGATOIRE",
+        "fnfc.opp": "Voices-[Adversaire].ogg",
+        "fnfc.ply": "Voices-[Joueur].ogg",
+        "fnfc.btn": "💿 GÉNÉRER LE PACK FNF CLASSIC (.FNFC)",
+        "fnfc.hint": "Le pack .fnfc inclut vos charts + Inst.ogg (obligatoire) + les voix. Faites simplement glisser les fichiers à convertir (cliquez d'abord sur '✨ TRAITER LES FICHIERS').",
+
+        "list.found": "🔥 {n} fichier(s) détecté(s), prêt(s) à tout casser !",
+        "list.ignored": "{n} fichier(s) au format non valide ont été ignorés.",
+        "list.none": "⚠️ Aucun fichier .json valide n'a été trouvé.",
+        "list.none.inverse": "⚠️ Aucun fichier .json, .fnfc ou .zip valide n'a été trouvé.",
+        "done.ok": "✅ Conversion terminée !",
+        "done.warn.forward": "✅ Conversion terminée avec {n} avertissement(s) — consultez les avertissements ci-dessous.",
+        "done.warn.inverse": "✅ Conversion terminée avec {n} avertissement(s) — consultez le panneau de droite.",
+
+        "err.convert": "❌ Erreur de conversion : {msg}",
+        "err.zip": "❌ Impossible d'enregistrer le ZIP : {msg}",
+        "err.fnfc": "❌ Impossible de générer le .fnfc : {msg}",
+        "err.jszip": "❌ Impossible de charger JSZip (vendor/jszip.min.js). Rechargez la page ou réinstallez l'application.",
+        "err.nofiles": "❌ Aucun chart chargé. Faites glisser ou importez les fichiers JSON de la chanson avant de générer le pack.",
+        "err.noinst": "❌ Vous devez importer l'audio 'Inst.ogg' — il est OBLIGATOIRE pour le pack .fnfc.",
+        "err.notogg": "❌ « {file} » n'est pas un .ogg. Le .fnfc nécessite des audios OGG (convertissez le fichier avant de l'importer).",
+        "err.badjson": "« {file} » n'est pas un JSON valide ({msg}).",
+        "err.onlyevents": "Vous n'avez importé que events.json. Ajoutez aussi le chart de la chanson (par exemple chanson-hard.json).",
+        "err.nocharts": "Aucun chart à convertir.",
+        "err.fileprefix": "« {file} » : {msg}",
+        "err.zipopen": "Impossible d'ouvrir « {file} » comme ZIP/.fnfc ({msg}).",
+        "err.nojszip": "JSZip indisponible.",
+        "err.noplugins": "Plugins natifs indisponibles.",
+        "err.readfile": "Impossible de lire le fichier.",
+        "err.novslice": "Aucun chart V Slice trouvé (fichier avec 'notes' par difficulté et 'scrollSpeed'). Si vos fichiers viennent de Psych/Kade/Codename, utilisez le sens Normal.",
+        "share.dialog": "Enregistrer ou partager",
+
+        "warn.dupdiff": "Deux fichiers ciblent la difficulté '{diff}' : le dernier a été utilisé (« {file} »).",
+        "warn.dupdiff.inverse": "La difficulté '{diff}' apparaît dans plusieurs charts ; le dernier a été utilisé (« {file} »).",
+        "warn.nonotes": "{file} : aucune note trouvée ; vérifiez que le mode d'origine est le bon.",
+        "warn.basemeta": "La metadata de base (« {file} ») a été utilisée et celle d'une variation a été ignorée.",
+        "warn.extrameta": "Une metadata supplémentaire a été ignorée (« {file} ») ; seule la première est utilisée.",
+        "warn.notvslice": "« {file} » ne ressemble ni à un chart ni à une metadata V Slice : ignoré.",
+        "report.song": "Chanson : {v}",
+        "report.target": "Destination : {v}",
+        "report.diffs": "Difficultés : {v}",
+        "report.files": "Fichiers générés :",
+        "report.warnings": "Avertissements :",
+
+        "conv.noevents": "Le tableau 'events' est introuvable (events.json de Psych).",
+        "conv.nonotes": "Le tableau 'notes' est introuvable (chart Psych/Kade). Vérifiez le format ou que le bon mode est sélectionné.",
+        "conv.nocodename": "Aucun chart natif Codename (strumLines) trouvé. Si le fichier vient de Psych (ou d'un chart CNE au format legacy), utilisez le mode 'Psych To V Slice'.",
+        "conv.novslicenotes": "Le chart V-Slice ne contient aucune note (champ 'notes' avec les difficultés).",
+        "warn.relative": "Le chart ne déclare pas format \"psych_v1\" : les pistes ont été interprétées comme relatives à mustHitSection (comme le fait Psych au chargement).",
+        "warn.skipped": "{n} événement(s) sans équivalent V-Slice ignoré(s) ({names}).",
+        "warn.skipped.inverse": "{n} événement(s) sans équivalent ignoré(s) ({names}).",
+        "warn.gf": "{n} note(s) de la strumline GF ignorée(s) (V-Slice n'a pas de piste GF).",
+        "warn.nometa": "Aucune metadata avec timeChanges trouvée : 100 BPM supposés. Importez aussi le fichier -metadata.json pour obtenir le vrai BPM.",
+        "warn.fixedfocus": "{n} FocusCamera à position fixe (sans personnage) ignoré(s) : ce format n'a pas d'équivalent.",
+        "warn.zoomkade": "{n} ZoomCamera ignoré(s) : le chart Kade ne gère pas les événements.",
+        "warn.lostfocus": "{n} changement(s) de caméra en milieu de section ne rentrent pas dans le format legacy (ils sont placés au début de la section).",
+        "warn.approxzoom": "{n} ZoomCamera en mode 'direct' approximé(s) en 'Add Camera Zoom'.",
+        "warn.approxscroll": "{n} ScrollSpeed d'un seul côté (joueur ou adversaire) : Psych l'applique aux deux.",
+        "warn.skippedanim": "{n} PlayAnimation ignoré(s) : sans animation ou sur un personnage qui n'est pas bf/dad/gf.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile :</strong> importez directement le projet <code>.FNMM</code> (il est lu automatiquement). Notes et sustains, BPM, caméra (FocusCamera) et zoom (ZoomCamera) ; les effets de scène (shake, objets, GUI) n'existent pas dans V Slice et sont ignorés avec un avertissement.",
+        "drop.forward.fnmm": "Déposez ici votre projet <span>.FNMM</span> de Funkin Maker Mobile !",
+        "list.none.fnmm": "⚠️ Aucun fichier .FNMM valide n'a été trouvé.",
+        "conv.fnmm.nodata": "Le .FNMM ne contient pas data.json : il ne ressemble pas à un projet Funkin Maker Mobile.",
+        "conv.fnmm.nostrum": "« strumLines » est introuvable dans data.json. Vérifiez qu'il s'agit d'un .FNMM de Funkin Maker Mobile.",
+        "warn.fnmm.extralines": "{n} note(s) de strumlines supplémentaires (plus de 2) ignorée(s) : V-Slice n'a que joueur et adversaire.",
+        "warn.fnmm.extralanes": "{n} note(s) de lanes supplémentaires (plus de 4 par strumline) ignorée(s).",
+        "warn.fnmm.dups": "{n} note(s) en double sur la même lane et au même instant ont été fusionnée(s).",
+        "warn.fnmm.skin": "{n} note(s) avec un skin différent du normal : conservée(s) comme type de note « skinN ».",
+        "warn.fnmm.trigger": "{n} note(s) avec un événement au succès/à l'échec (onPressEvent/onMissEvent) perdent cet événement : V-Slice n'en a pas.",
+        "warn.fnmm.nospeed": "Funkin Maker n'enregistre ni la vitesse des notes ni les personnages : la vitesse {speed}, bf / dad / gf et le stage « stage » ont été utilisés. Modifiez-les dans le chart et la metadata si besoin."
+    };
+
+    const de = {
+        "meta.desc": "Konvertiere FNF-Charts zwischen Psych, Kade, Codename, Funkin Maker Mobile und V-Slice (.fnfc). Funktioniert im Web, unter Windows, Linux, Android und iOS.",
+        "lang.label": "Sprache",
+        "dir.title": "🔁 KONVERTIERUNGSRICHTUNG",
+        "dir.forward": "Normal: Andere → V Slice",
+        "dir.inverse": "Invers: V Slice → Andere",
+        "src.title": "⚡ QUELLFORMAT DES CHARTS",
+        "dst.title": "🎯 ZIELFORMAT (AUS V SLICE)",
+
+        "status.f.tag": "AKTIVE KONFIGURATION",
+        "status.f.psych": "🎯 <strong>Psych Engine:</strong> Automatische Kompatibilität der Strukturen.",
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy):</strong> Automatisches Neuzuordnen der Spuren nach mustHitSection (behebt die Vertauschung Gegner/Spieler).",
+        "status.f.kade": "🔧 <strong>Kade Engine:</strong> Vanilla-/Legacy-Format — Spuren relativ zu mustHitSection, auf absolut umgerechnet.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1):</strong> Absolute Spuren 0-3 (Spieler) | 4-7 (Gegner), ohne Vertauschungen.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Absolute Spuren + Inline-Events der Abschnitte (ZoomCamera/FocusCamera).",
+        "status.f.pslice": "🫓 <strong>P Slice:</strong> Fork von Psych 1.0 (PE 1.0) — dieselben absoluten psych_v1-Charts, review-top- und Inline-Events.",
+        "status.f.codename": "⚡ <strong>Codename Engine:</strong> Konvertierung nativer Charts (strumLines) nach V Slice.",
+        "status.f.events": "🔍 <strong>Intelligente Events:</strong> Automatische Zuordnung von FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom usw.), PlayAnimation (Hey!, Play Animation) und ScrollSpeed (Change Scroll Speed), bei Psych in beide Richtungen.",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych):</strong> Lade auch die <code>events.json</code> des Songs zusammen mit deinen Charts hoch; ihre Events werden allen Schwierigkeitsgraden hinzugefügt.",
+        "status.f.golden": "🔥 <strong>Goldene Regel:</strong> Spur 0-3 (Spieler) | Spur 4-7 (Gegner).",
+
+        "status.i.tag": "INVERSER MODUS AKTIV",
+        "status.i.inputs": "📦 <strong>Eingaben:</strong> <code>-chart.json</code> + <code>-metadata.json</code> von V Slice oder direkt eine <code>.fnfc</code> / <code>.zip</code> (werden automatisch gelesen).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice:</strong> <code>psych_v1</code>-JSON mit absoluten Spuren und Kamera-Events mitten im Abschnitt.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade:</strong> Spuren relativ zu <code>mustHitSection</code> (exakte inverse Umrechnung).",
+        "status.i.codename": "⚡ <strong>Codename:</strong> strumLines (Gegner / Spieler / GF), Events und <code>meta.json</code>.",
+        "status.i.perdiff": "🎚️ <strong>Eine Ausgabe pro Schwierigkeitsgrad</strong>, mit BPM und BPM-Wechseln aus <code>timeChanges</code> rekonstruiert.",
+
+        "drop.aria": "Dateien auswählen",
+        "drop.forward": "Lege hier deine <span>{mode}</span>-Charts ab!",
+        "drop.inverse": "Lege hier dein V-Slice-<span>Chart + Metadata</span> (oder eine <span>.fnfc</span>) ab!",
+        "drop.hint.forward": "Oder klicke, um deine Dateien zu durchsuchen",
+        "drop.hint.inverse": "Ziel: {target} · akzeptiert .json, .fnfc und .zip",
+
+        "btn.convert": "✨ DATEIEN VERARBEITEN ✨",
+        "btn.convert.inverse": "🔄 IN {target} KONVERTIEREN",
+        "btn.zip": "🎁 PAKET HERUNTERLADEN (.ZIP)",
+        "btn.zip.inverse": "🎁 KONVERTIERTE DATEIEN HERUNTERLADEN (.ZIP)",
+        "btn.clear": "🗑️ Auswahl löschen",
+        "btn.support": "🐞 FEHLER-SUPPORT",
+
+        "title.chart.inverse": "konvertierter Chart",
+        "title.meta.inverse": "Bericht / Dateien",
+        "ph.chart": "Die konvertierten Noten erscheinen hier...",
+        "ph.meta": "Die Metadaten erscheinen hier...",
+        "ph.chart.inverse": "Die erste konvertierte Datei erscheint hier...",
+        "ph.meta.inverse": "Hier siehst du die erzeugten Dateien und Warnungen...",
+
+        "copy.label": "📋 Kopieren",
+        "copy.empty": "❌ Leer!",
+        "copy.done": "✅ Kopiert!",
+        "copy.denied": "❌ Keine Berechtigung",
+
+        "extra.title": "🛠️ ZUSÄTZLICHE METADATA-EINSTELLUNGEN",
+        "extra.album": "Album Roll aktivieren",
+        "extra.album.ph": "Albumname (z. B. Vol 1)...",
+        "extra.sticker": "Sticker Pack aktivieren",
+        "extra.sticker.ph": "Name deiner Sticker...",
+
+        "ev.title": "🎬 BEIM KONVERTIEREN ENTHALTENE EVENTS",
+        "ev.camera": "Kamera-Events (FocusCamera)",
+        "ev.zoom": "Zoom-Events (ZoomCamera)",
+
+        "fnfc.title": "💿 ALS FNF CLASSIC PACKEN (.FNFC)",
+        "fnfc.required": "ERFORDERLICH",
+        "fnfc.opp": "Voices-[Gegner].ogg",
+        "fnfc.ply": "Voices-[Spieler].ogg",
+        "fnfc.btn": "💿 FNF-CLASSIC-PAKET ERSTELLEN (.FNFC)",
+        "fnfc.hint": "Das .fnfc-Paket enthält deine Charts + Inst.ogg (erforderlich) + Gesang. Ziehe einfach die Dateien hinein (klicke zuerst auf '✨ DATEIEN VERARBEITEN').",
+
+        "list.found": "🔥 {n} Datei(en) erkannt und startklar!",
+        "list.ignored": "{n} Datei(en) mit ungültigem Format wurden ignoriert.",
+        "list.none": "⚠️ Es wurden keine gültigen .json-Dateien gefunden.",
+        "list.none.inverse": "⚠️ Es wurden keine gültigen .json-, .fnfc- oder .zip-Dateien gefunden.",
+        "done.ok": "✅ Konvertierung abgeschlossen!",
+        "done.warn.forward": "✅ Konvertierung mit {n} Warnung(en) abgeschlossen — siehe die Warnungen unten.",
+        "done.warn.inverse": "✅ Konvertierung mit {n} Warnung(en) abgeschlossen — siehe das rechte Fenster.",
+
+        "err.convert": "❌ Fehler bei der Konvertierung: {msg}",
+        "err.zip": "❌ Die ZIP-Datei konnte nicht gespeichert werden: {msg}",
+        "err.fnfc": "❌ Die .fnfc konnte nicht erzeugt werden: {msg}",
+        "err.jszip": "❌ JSZip konnte nicht geladen werden (vendor/jszip.min.js). Lade die Seite neu oder installiere die App neu.",
+        "err.nofiles": "❌ Keine Charts geladen. Ziehe die JSON-Dateien des Songs hinein oder lade sie hoch, bevor du das Paket erstellst.",
+        "err.noinst": "❌ Du musst das Audio 'Inst.ogg' hochladen — es ist für das .fnfc-Paket ERFORDERLICH.",
+        "err.notogg": "❌ „{file}“ ist keine .ogg-Datei. Das .fnfc benötigt OGG-Audio (konvertiere die Datei vor dem Hochladen).",
+        "err.badjson": "„{file}“ ist kein gültiges JSON ({msg}).",
+        "err.onlyevents": "Du hast nur events.json hochgeladen. Füge auch den Chart des Songs hinzu (z. B. song-hard.json).",
+        "err.nocharts": "Es gibt keinen Chart zum Konvertieren.",
+        "err.fileprefix": "„{file}“: {msg}",
+        "err.zipopen": "„{file}“ konnte nicht als ZIP/.fnfc geöffnet werden ({msg}).",
+        "err.nojszip": "JSZip nicht verfügbar.",
+        "err.noplugins": "Native Plugins nicht verfügbar.",
+        "err.readfile": "Die Datei konnte nicht gelesen werden.",
+        "err.novslice": "Es wurde kein V-Slice-Chart gefunden (Datei mit 'notes' pro Schwierigkeitsgrad und 'scrollSpeed'). Stammen deine Dateien von Psych/Kade/Codename, nutze die Richtung Normal.",
+        "share.dialog": "Speichern oder teilen",
+
+        "warn.dupdiff": "Zwei Dateien betreffen den Schwierigkeitsgrad '{diff}': die letzte wurde verwendet („{file}“).",
+        "warn.dupdiff.inverse": "Der Schwierigkeitsgrad '{diff}' kommt in mehr als einem Chart vor; der letzte wurde verwendet („{file}“).",
+        "warn.nonotes": "{file}: Es wurden keine Noten gefunden; prüfe, ob der Quellmodus stimmt.",
+        "warn.basemeta": "Die Basis-Metadata („{file}“) wurde verwendet, die einer Variation wurde ignoriert.",
+        "warn.extrameta": "Zusätzliche Metadata wurde ignoriert („{file}“); es wird nur die erste verwendet.",
+        "warn.notvslice": "„{file}“ sieht weder nach V-Slice-Chart noch nach Metadata aus: ignoriert.",
+        "report.song": "Song: {v}",
+        "report.target": "Ziel: {v}",
+        "report.diffs": "Schwierigkeitsgrade: {v}",
+        "report.files": "Erzeugte Dateien:",
+        "report.warnings": "Warnungen:",
+
+        "conv.noevents": "Das Array 'events' wurde nicht gefunden (events.json von Psych).",
+        "conv.nonotes": "Das Array 'notes' wurde nicht gefunden (Psych-/Kade-Chart). Prüfe das Format oder ob der richtige Modus gewählt ist.",
+        "conv.nocodename": "Es wurde kein nativer Codename-Chart (strumLines) gefunden. Stammt die Datei von Psych (oder ist ein CNE-Chart im Legacy-Format), nutze den Modus 'Psych To V Slice'.",
+        "conv.novslicenotes": "Der V-Slice-Chart enthält keine Noten (Feld 'notes' mit Schwierigkeitsgraden).",
+        "warn.relative": "Der Chart deklariert kein format \"psych_v1\": Die Spuren wurden relativ zu mustHitSection interpretiert (wie Psych es beim Laden tut).",
+        "warn.skipped": "{n} Event(s) ohne V-Slice-Entsprechung übersprungen ({names}).",
+        "warn.skipped.inverse": "{n} Event(s) ohne Entsprechung übersprungen ({names}).",
+        "warn.gf": "{n} Note(n) der GF-Strumline übersprungen (V-Slice hat keine GF-Spur).",
+        "warn.nometa": "Keine Metadata mit timeChanges gefunden: Es wurden 100 BPM angenommen. Lade auch die Datei -metadata.json hoch, um die echten BPM zu erhalten.",
+        "warn.fixedfocus": "{n} FocusCamera mit fester Position (ohne Charakter) übersprungen: Dieses Format hat keine Entsprechung.",
+        "warn.zoomkade": "{n} ZoomCamera übersprungen: Der Kade-Chart unterstützt keine Events.",
+        "warn.lostfocus": "{n} Kamerawechsel mitten im Abschnitt passen nicht ins Legacy-Format (sie werden an den Abschnittsanfang gelegt).",
+        "warn.approxzoom": "{n} ZoomCamera im Modus 'direct' als 'Add Camera Zoom' angenähert.",
+        "warn.approxscroll": "{n} einseitiger ScrollSpeed (Spieler oder Gegner): Psych wendet ihn auf beide an.",
+        "warn.skippedanim": "{n} PlayAnimation übersprungen: ohne Animation oder für einen Charakter, der nicht bf/dad/gf ist.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile:</strong> Lade das <code>.FNMM</code>-Projekt direkt hoch (es wird automatisch gelesen). Noten und Sustains, BPM, Kamera (FocusCamera) und Zoom (ZoomCamera); Szeneneffekte (Shake, Objekte, GUI) gibt es in V Slice nicht und werden mit einer Warnung übersprungen.",
+        "drop.forward.fnmm": "Lege hier dein <span>.FNMM</span>-Projekt von Funkin Maker Mobile ab!",
+        "list.none.fnmm": "⚠️ Es wurden keine gültigen .FNMM-Dateien gefunden.",
+        "conv.fnmm.nodata": "Die .FNMM enthält keine data.json: Sie sieht nicht nach einem Funkin-Maker-Mobile-Projekt aus.",
+        "conv.fnmm.nostrum": "'strumLines' wurde in data.json nicht gefunden. Prüfe, ob es eine .FNMM von Funkin Maker Mobile ist.",
+        "warn.fnmm.extralines": "{n} Note(n) aus zusätzlichen Strumlines (mehr als 2) übersprungen: V-Slice kennt nur Spieler und Gegner.",
+        "warn.fnmm.extralanes": "{n} Note(n) aus zusätzlichen Lanes (mehr als 4 pro Strumline) übersprungen.",
+        "warn.fnmm.dups": "{n} doppelte Note(n) auf derselben Lane zur gleichen Zeit wurden zusammengeführt.",
+        "warn.fnmm.skin": "{n} Note(n) mit einem anderen Skin als dem normalen: als Notentyp 'skinN' beibehalten.",
+        "warn.fnmm.trigger": "{n} Note(n) mit Treffer-/Fehlschlag-Ereignis (onPressEvent/onMissEvent) verlieren dieses Ereignis: V-Slice hat kein Gegenstück.",
+        "warn.fnmm.nospeed": "Funkin Maker speichert weder die Notengeschwindigkeit noch Charaktere: Es wurden Geschwindigkeit {speed}, bf / dad / gf und die Stage 'stage' verwendet. Ändere sie bei Bedarf im Chart und in der Metadata."
+    };
+
+    const it = {
+        "meta.desc": "Converti chart FNF tra Psych, Kade, Codename, Funkin Maker Mobile e V-Slice (.fnfc). Funziona su Web, Windows, Linux, Android e iOS.",
+        "lang.label": "Lingua",
+        "dir.title": "🔁 DIREZIONE DELLA CONVERSIONE",
+        "dir.forward": "Normale: Altri → V Slice",
+        "dir.inverse": "Inversa: V Slice → Altri",
+        "src.title": "⚡ FORMATO DI ORIGINE DEL CHART",
+        "dst.title": "🎯 FORMATO DI DESTINAZIONE (DA V SLICE)",
+
+        "status.f.tag": "CONFIGURAZIONE ATTIVA",
+        "status.f.psych": "🎯 <strong>Psych Engine:</strong> Compatibilità automatica delle strutture.",
+        "status.f.psych063": "🕰️ <strong>Psych 0.6.3 (Legacy):</strong> Rimappatura automatica delle corsie in base a mustHitSection (corregge l'inversione Avversario/Giocatore).",
+        "status.f.kade": "🔧 <strong>Kade Engine:</strong> Formato vanilla/legacy — corsie relative a mustHitSection, rimappate in assolute.",
+        "status.f.psych073": "🚀 <strong>Psych 0.7.3 (psych_v1):</strong> Corsie assolute 0-3 (Giocatore) | 4-7 (Avversario), senza inversioni.",
+        "status.f.psych104": "🧠 <strong>Psych 1.0.4 (psych_v1):</strong> Corsie assolute + eventi inline delle sezioni (ZoomCamera/FocusCamera).",
+        "status.f.pslice": "🫓 <strong>P Slice:</strong> Fork di Psych 1.0 (PE 1.0) — stessi chart psych_v1 assoluti, eventi review-top e inline.",
+        "status.f.codename": "⚡ <strong>Codename Engine:</strong> Conversione dei chart nativi (strumLines) in V Slice.",
+        "status.f.events": "🔍 <strong>Eventi intelligenti:</strong> Mappatura automatica di FocusCamera / Camera Follow Pos, ZoomCamera (Add Camera Zoom, ecc.), PlayAnimation (Hey!, Play Animation) e ScrollSpeed (Change Scroll Speed), in entrambe le direzioni per Psych.",
+        "status.f.eventsjson": "📅 <strong>events.json (Psych):</strong> carica anche l'<code>events.json</code> della canzone insieme ai tuoi chart; i suoi eventi vengono aggiunti a tutte le difficoltà.",
+        "status.f.golden": "🔥 <strong>Regola d'oro:</strong> Corsia 0-3 (Giocatore) | Corsia 4-7 (Avversario).",
+
+        "status.i.tag": "MODALITÀ INVERSA ATTIVA",
+        "status.i.inputs": "📦 <strong>Input:</strong> <code>-chart.json</code> + <code>-metadata.json</code> di V Slice, oppure direttamente un <code>.fnfc</code> / <code>.zip</code> (letti automaticamente).",
+        "status.i.psych": "🧠 <strong>Psych 0.7+ / 1.0 / P Slice:</strong> JSON <code>psych_v1</code> con corsie assolute ed eventi di camera a metà sezione.",
+        "status.i.legacy": "🕰️ <strong>Psych 0.6.3 / Kade:</strong> corsie relative a <code>mustHitSection</code> (rimappatura inversa esatta).",
+        "status.i.codename": "⚡ <strong>Codename:</strong> strumLines (avversario / giocatore / GF), eventi e <code>meta.json</code>.",
+        "status.i.perdiff": "🎚️ <strong>Un'uscita per difficoltà</strong>, con BPM e cambi di BPM ricostruiti da <code>timeChanges</code>.",
+
+        "drop.aria": "Seleziona file",
+        "drop.forward": "Rilascia qui i tuoi chart di <span>{mode}</span>!",
+        "drop.inverse": "Rilascia qui il tuo <span>chart + metadata</span> di V Slice (o un <span>.fnfc</span>)!",
+        "drop.hint.forward": "Oppure clicca per sfogliare i tuoi file",
+        "drop.hint.inverse": "Destinazione: {target} · accetta .json, .fnfc e .zip",
+
+        "btn.convert": "✨ ELABORA I FILE ✨",
+        "btn.convert.inverse": "🔄 CONVERTI IN {target}",
+        "btn.zip": "🎁 SCARICA IL PACCHETTO (.ZIP)",
+        "btn.zip.inverse": "🎁 SCARICA I FILE CONVERTITI (.ZIP)",
+        "btn.clear": "🗑️ Cancella selezione",
+        "btn.support": "🐞 SUPPORTO ERRORI",
+
+        "title.chart.inverse": "chart convertito",
+        "title.meta.inverse": "rapporto / file",
+        "ph.chart": "Le note convertite appariranno qui...",
+        "ph.meta": "I metadati appariranno qui...",
+        "ph.chart.inverse": "Il primo file convertito apparirà qui...",
+        "ph.meta.inverse": "Qui vedrai i file generati e gli avvisi...",
+
+        "copy.label": "📋 Copia",
+        "copy.empty": "❌ Vuoto!",
+        "copy.done": "✅ Copiato!",
+        "copy.denied": "❌ Senza permessi",
+
+        "extra.title": "🛠️ IMPOSTAZIONI EXTRA DEI METADATA",
+        "extra.album": "Attiva Album Roll",
+        "extra.album.ph": "Nome dell'album (es.: Vol 1)...",
+        "extra.sticker": "Attiva Sticker Pack",
+        "extra.sticker.ph": "Nome dei tuoi sticker...",
+
+        "ev.title": "🎬 EVENTI INCLUSI NELLA CONVERSIONE",
+        "ev.camera": "Eventi di camera (FocusCamera)",
+        "ev.zoom": "Eventi di zoom (ZoomCamera)",
+
+        "fnfc.title": "💿 COMPRIMI IN FNF CLASSIC (.FNFC)",
+        "fnfc.required": "OBBLIGATORIO",
+        "fnfc.opp": "Voices-[Avversario].ogg",
+        "fnfc.ply": "Voices-[Giocatore].ogg",
+        "fnfc.btn": "💿 GENERA PACCHETTO FNF CLASSIC (.FNFC)",
+        "fnfc.hint": "Il pacchetto .fnfc include i tuoi chart + Inst.ogg (obbligatorio) + voci. Trascina semplicemente i file da convertire (prima premi '✨ ELABORA I FILE').",
+
+        "list.found": "🔥 {n} file rilevato/i e pronto/i a spaccare!",
+        "list.ignored": "{n} file con formato non valido sono stati ignorati.",
+        "list.none": "⚠️ Non è stato trovato alcun file .json valido.",
+        "list.none.inverse": "⚠️ Non è stato trovato alcun file .json, .fnfc o .zip valido.",
+        "done.ok": "✅ Conversione completata!",
+        "done.warn.forward": "✅ Conversione completata con {n} avviso/i — controlla gli avvisi qui sotto.",
+        "done.warn.inverse": "✅ Conversione completata con {n} avviso/i — controlla il pannello di destra.",
+
+        "err.convert": "❌ Errore di conversione: {msg}",
+        "err.zip": "❌ Impossibile salvare lo ZIP: {msg}",
+        "err.fnfc": "❌ Impossibile generare il .fnfc: {msg}",
+        "err.jszip": "❌ Impossibile caricare JSZip (vendor/jszip.min.js). Ricarica la pagina o reinstalla l'app.",
+        "err.nofiles": "❌ Nessun chart caricato. Trascina o carica i file JSON della canzone prima di generare il pacchetto.",
+        "err.noinst": "❌ Devi caricare l'audio 'Inst.ogg' — è OBBLIGATORIO per il pacchetto .fnfc.",
+        "err.notogg": "❌ \"{file}\" non è un .ogg. Il .fnfc richiede audio OGG (converti il file prima di caricarlo).",
+        "err.badjson": "\"{file}\" non è un JSON valido ({msg}).",
+        "err.onlyevents": "Hai caricato solo events.json. Aggiungi anche il chart della canzone (ad esempio canzone-hard.json).",
+        "err.nocharts": "Non c'è nessun chart da convertire.",
+        "err.fileprefix": "\"{file}\": {msg}",
+        "err.zipopen": "Impossibile aprire \"{file}\" come ZIP/.fnfc ({msg}).",
+        "err.nojszip": "JSZip non disponibile.",
+        "err.noplugins": "Plugin nativi non disponibili.",
+        "err.readfile": "Impossibile leggere il file.",
+        "err.novslice": "Nessun chart V Slice trovato (file con 'notes' per difficoltà e 'scrollSpeed'). Se i tuoi file sono di Psych/Kade/Codename, usa la direzione Normale.",
+        "share.dialog": "Salva o condividi",
+
+        "warn.dupdiff": "Due file puntano alla difficoltà '{diff}': è stato usato l'ultimo (\"{file}\").",
+        "warn.dupdiff.inverse": "La difficoltà '{diff}' compare in più di un chart; è stato usato l'ultimo (\"{file}\").",
+        "warn.nonotes": "{file}: non è stata trovata nessuna nota; controlla che la modalità di origine sia corretta.",
+        "warn.basemeta": "È stata usata la metadata di base (\"{file}\") e quella di una variante è stata ignorata.",
+        "warn.extrameta": "Una metadata aggiuntiva è stata ignorata (\"{file}\"); si usa solo la prima.",
+        "warn.notvslice": "\"{file}\" non sembra né un chart né una metadata di V Slice: ignorato.",
+        "report.song": "Canzone: {v}",
+        "report.target": "Destinazione: {v}",
+        "report.diffs": "Difficoltà: {v}",
+        "report.files": "File generati:",
+        "report.warnings": "Avvisi:",
+
+        "conv.noevents": "L'array 'events' non è stato trovato (events.json di Psych).",
+        "conv.nonotes": "L'array 'notes' non è stato trovato (chart Psych/Kade). Controlla il formato o che sia selezionata la modalità corretta.",
+        "conv.nocodename": "Non è stato trovato un chart nativo di Codename (strumLines). Se il file è di Psych (o un chart CNE in formato legacy), usa la modalità 'Psych To V Slice'.",
+        "conv.novslicenotes": "Il chart V-Slice non contiene note (campo 'notes' con le difficoltà).",
+        "warn.relative": "Il chart non dichiara format \"psych_v1\": le corsie sono state interpretate come relative a mustHitSection (come fa Psych al caricamento).",
+        "warn.skipped": "{n} evento/i senza equivalente in V-Slice omesso/i ({names}).",
+        "warn.skipped.inverse": "{n} evento/i senza equivalente omesso/i ({names}).",
+        "warn.gf": "{n} nota/e della strumline GF omessa/e (V-Slice non ha una corsia GF).",
+        "warn.nometa": "Non è stata trovata metadata con timeChanges: sono stati assunti 100 BPM. Carica anche il file -metadata.json per ottenere il BPM reale.",
+        "warn.fixedfocus": "{n} FocusCamera con posizione fissa (senza personaggio) omesso/i: questo formato non ha un equivalente.",
+        "warn.zoomkade": "{n} ZoomCamera omesso/i: il chart di Kade non supporta gli eventi.",
+        "warn.lostfocus": "{n} cambio/i di camera a metà sezione non rientrano nel formato legacy (vengono spostati all'inizio della sezione).",
+        "warn.approxzoom": "{n} ZoomCamera in modalità 'direct' approssimato/i come 'Add Camera Zoom'.",
+        "warn.approxscroll": "{n} ScrollSpeed su un solo lato (giocatore o avversario): Psych lo applica a entrambi.",
+        "warn.skippedanim": "{n} PlayAnimation omesso/i: senza animazione o su un personaggio che non è bf/dad/gf.",
+        "status.f.funkinmaker": "📱 <strong>Funkin Maker Mobile:</strong> carica direttamente il progetto <code>.FNMM</code> (viene letto automaticamente). Note e sustain, BPM, camera (FocusCamera) e zoom (ZoomCamera); gli effetti di scena (shake, oggetti, GUI) non esistono in V Slice e vengono omessi con un avviso.",
+        "drop.forward.fnmm": "Rilascia qui il tuo progetto <span>.FNMM</span> di Funkin Maker Mobile!",
+        "list.none.fnmm": "⚠️ Non sono stati trovati file .FNMM validi.",
+        "conv.fnmm.nodata": "Il .FNMM non contiene data.json: non sembra un progetto di Funkin Maker Mobile.",
+        "conv.fnmm.nostrum": "'strumLines' non trovato in data.json. Verifica che sia un .FNMM di Funkin Maker Mobile.",
+        "warn.fnmm.extralines": "{n} nota/e di strumline extra (più di 2) omesse: V-Slice ha solo giocatore e avversario.",
+        "warn.fnmm.extralanes": "{n} nota/e di lane extra (più di 4 per strumline) omesse.",
+        "warn.fnmm.dups": "{n} nota/e duplicate sulla stessa lane e nello stesso istante sono state unificate.",
+        "warn.fnmm.skin": "{n} nota/e con skin diversa da quella normale: mantenute come tipo di nota 'skinN'.",
+        "warn.fnmm.trigger": "{n} nota/e con evento al colpo/errore (onPressEvent/onMissEvent) perdono quell'evento: V-Slice non lo prevede.",
+        "warn.fnmm.nospeed": "Funkin Maker non salva la velocità delle note né i personaggi: sono stati usati velocità {speed}, bf / dad / gf e lo stage 'stage'. Modificali nel chart e nella metadata se serve."
+    };
+
+    const DICT = { es, en, pt, "pt-BR": ptBR, fr, de, it };
+
+    // ------------------------------------------------------------ idioma activo
+    const isValid = code => Object.prototype.hasOwnProperty.call(DICT, code);
+
+    function detect() {
+        // Sin navegador (Node, pruebas) siempre español: es el idioma de referencia.
+        if (typeof document === "undefined") return "es";
+        try {
+            const saved = root.localStorage && root.localStorage.getItem(STORAGE_KEY);
+            if (saved && isValid(saved)) return saved;
+        } catch (err) { /* almacenamiento bloqueado: se sigue con el idioma del navegador */ }
+        const prefs = (root.navigator && (root.navigator.languages || [root.navigator.language])) || [];
+        for (const raw of prefs) {
+            const l = String(raw || "").toLowerCase();
+            if (l === "pt-pt") return "pt";
+            if (l.startsWith("pt")) return "pt-BR"; // "pt" a secas o pt-BR: el portugués más usado es el brasileño
+            const base = l.slice(0, 2);
+            if (isValid(base)) return base;
+        }
+        return "en";
+    }
+
+    let current = detect();
+    const listeners = [];
+
+    function format(str, params) {
+        if (!params) return str;
+        return str.replace(/\{(\w+)\}/g, (m, k) => (params[k] === undefined ? m : String(params[k])));
+    }
+
+    // Si falta una clave en el idioma activo se usa inglés y, en último caso, español (nunca se muestra vacío).
+    function t(key, params) {
+        const d = DICT[current] || es;
+        const s = d[key] !== undefined ? d[key] : (en[key] !== undefined ? en[key] : (es[key] !== undefined ? es[key] : key));
+        return format(s, params);
+    }
+
+    function getLang() { return current; }
+    function langInfo() { return LANGS.find(l => l.code === current) || LANGS[0]; }
+
+    function setLang(code, persist) {
+        if (!isValid(code)) return false;
+        current = code;
+        if (persist) {
+            try { root.localStorage && root.localStorage.setItem(STORAGE_KEY, code); } catch (err) { /* sin almacenamiento */ }
+        }
+        listeners.forEach(fn => { try { fn(code); } catch (err) { console.error(err); } });
+        return true;
+    }
+
+    function onChange(fn) { listeners.push(fn); }
+
+    // Aplica las traducciones a los elementos marcados con data-i18n*:
+    //   data-i18n="clave"              → textContent
+    //   data-i18n-html="clave"         → innerHTML (textos propios con <strong>/<code>; nunca datos del usuario)
+    //   data-i18n-placeholder / -aria  → atributos placeholder / aria-label
+    //   data-i18n-content="clave"      → atributo content (meta description)
+    function applyDom(scope) {
+        const doc = scope || (typeof document !== "undefined" ? document : null);
+        if (!doc) return;
+        doc.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.getAttribute("data-i18n")); });
+        doc.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = t(el.getAttribute("data-i18n-html")); });
+        doc.querySelectorAll("[data-i18n-placeholder]").forEach(el => el.setAttribute("placeholder", t(el.getAttribute("data-i18n-placeholder"))));
+        doc.querySelectorAll("[data-i18n-aria]").forEach(el => el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria"))));
+        doc.querySelectorAll("[data-i18n-content]").forEach(el => el.setAttribute("content", t(el.getAttribute("data-i18n-content"))));
+        if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = langInfo().html;
+    }
+
+    const api = { LANGS, DICT, t, getLang, setLang, onChange, applyDom, langInfo };
+    if (typeof module !== "undefined" && module.exports) module.exports = api;
+    root.I18N = api;
+})(typeof window !== "undefined" ? window : globalThis);
