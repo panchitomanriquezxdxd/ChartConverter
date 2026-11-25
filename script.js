@@ -469,6 +469,7 @@ async function runInverse() {
     const warnings = [];
     const chart = { notes: {}, scrollSpeed: {}, events: [] };
     let meta = null;
+    let metaIsBase = false;
     let chartCount = 0;
     const seenEvents = new Set();
 
@@ -491,8 +492,14 @@ async function runInverse() {
                 if (!seenEvents.has(k)) { seenEvents.add(k); chart.events.push(ev); }
             });
         } else if (looksLikeVSliceMeta(obj)) {
-            if (!meta) meta = obj;
-            else warnings.push(`Se ignoró metadata adicional ("${entry.name}"); solo se usa la primera.`);
+            // Un .fnfc puede traer metadata de variaciones ("-metadata-erect.json"): se prefiere la base
+            // ("-metadata.json"), en vez de quedarse con la que casualmente viniera primero en el ZIP.
+            const isBase = /(^|[\\/])[^\\/]*-metadata\.json$/i.test(entry.name);
+            if (!meta) { meta = obj; metaIsBase = isBase; }
+            else if (isBase && !metaIsBase) {
+                warnings.push(`Se usó la metadata base ("${entry.name}") y se ignoró la de una variación.`);
+                meta = obj; metaIsBase = true;
+            } else warnings.push(`Se ignoró metadata adicional ("${entry.name}"); solo se usa la primera.`);
         } else {
             warnings.push(`"${entry.name}" no parece un chart ni metadata de V Slice: se ignoró.`);
         }
@@ -586,6 +593,13 @@ fnfcBtn.addEventListener("click", async () => {
     if (!instFile) {
         notify("❌ Debes subir el audio 'Inst.ogg' — es OBLIGATORIO para el pack .fnfc.", "error");
         instAudioInput.focus();
+        return;
+    }
+    // El pack guarda los audios como .ogg: un mp3/wav renombrado dentro del .fnfc no suena en el juego.
+    const notOgg = f => f && !/\.(ogg|oga)$/i.test(f.name) && !/ogg/i.test(f.type || "");
+    const badAudio = [instAudioInput.files[0], oppAudioInput.files[0], plyAudioInput.files[0]].find(notOgg);
+    if (badAudio) {
+        notify(`❌ "${badAudio.name}" no es .ogg. El .fnfc necesita audios OGG (convierte el archivo antes de subirlo).`, "error");
         return;
     }
 

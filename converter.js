@@ -284,7 +284,10 @@
 
     // ------------------------------------------------------------ METADATA V SLICE
     function buildVSliceMeta(opts) {
-        const diffs = (opts.difficulties && opts.difficulties.length) ? opts.difficulties : ["normal"];
+        // Se ordenan easy → nightmare: V-Slice muestra las dificultades en el orden del array (antes quedaba
+        // el orden en que se subieron los archivos, p. ej. "hard" antes que "easy").
+        const rank = d => { const i = KNOWN_DIFFS.indexOf(d); return i < 0 ? KNOWN_DIFFS.length : i; };
+        const diffs = (opts.difficulties && opts.difficulties.length) ? opts.difficulties.slice().sort((a, b) => rank(a) - rank(b)) : ["normal"];
         const ratings = {};
         diffs.forEach(d => { ratings[d] = DEFAULT_RATINGS[d] || 5; });
 
@@ -392,9 +395,23 @@
             .map(e => ({ t: toNum(e.t, NaN), e: e.e, v: e.v || {} }))
             .filter(e => Number.isFinite(e.t))
             .sort((a, b) => a.t - b.t);
-        const focusEvents = camera ? allEvents.filter(e => e.e === "FocusCamera")
-            .map(e => ({ t: e.t, c: Number(toNum(e.v.char, 0)) })) : [];
+        // FocusCamera solo tiene equivalente para char 0 (jugador), 1 (oponente) y 2 (GF). Con char -1 / sin char
+        // la cámara va a una posición fija (x, y): antes se contaba como "oponente" y desordenaba las secciones.
+        const allFocus = camera ? allEvents.filter(e => e.e === "FocusCamera")
+            .map(e => ({ t: e.t, c: toNum(e.v.char, NaN) })) : [];
+        const focusEvents = allFocus.filter(f => f.c === 0 || f.c === 1 || f.c === 2);
+        const fixedFocus = allFocus.length - focusEvents.length;
+        if (fixedFocus) warnings.push(`${fixedFocus} FocusCamera con posición fija (sin personaje) omitidos: no tienen equivalente.`);
         const zoomEvents = zoomOn ? allEvents.filter(e => e.e === "ZoomCamera") : [];
+        // V-Slice puede traer solo "default" en scrollSpeed (sin una entrada por dificultad).
+        const speedFor = diff => {
+            const ss = chart.scrollSpeed;
+            if (typeof ss === "number") return toNum(ss, 1);
+            const own = ss && typeof ss === "object" ? toNum(ss[diff], NaN) : NaN;
+            if (Number.isFinite(own)) return own;
+            const def = ss && typeof ss === "object" ? toNum(ss.default, NaN) : NaN;
+            return Number.isFinite(def) ? def : 1;
+        };
         const otherEvents = allEvents.filter(e => e.e !== "FocusCamera" && e.e !== "ZoomCamera");
         if (otherEvents.length) {
             const names = [...new Set(otherEvents.map(e => e.e))].slice(0, 6).join(", ");
@@ -428,7 +445,8 @@
             const notes = (Array.isArray(notesByDiff[diff]) ? notesByDiff[diff] : [])
                 .filter(n => n && Number.isFinite(toNum(n.t, NaN)))
                 .sort((a, b) => a.t - b.t);
-            const speed = toNum(chart.scrollSpeed && chart.scrollSpeed[diff], 1);
+            const speed = speedFor(diff);
+            const firstDiff = diff === diffs[0]; // los eventos son globales: se cuentan una sola vez, no por dificultad
 
             let endTime = 0;
             notes.forEach(n => { endTime = Math.max(endTime, n.t + toNum(n.l, 0)); });
@@ -464,7 +482,9 @@
                 }));
                 tcs.slice(1).forEach(tc => events.push({ name: "BPM Change", time: round3(tc.t), params: [tc.bpm] }));
                 events.sort((a, b) => a.time - b.time);
-                const cMeta = { name: key, displayName: songName, bpm: tcs[0].bpm, beatsPerMeasure: 4, stepsPerBeat: 4, difficulties: diffs.map(d => d.toUpperCase()), icon: player2 };
+                // Dificultades en minúsculas, igual que los nombres de archivo (<dificultad>.json): Codename las
+                // busca por nombre y antes meta.json decía "HARD" mientras el archivo era "hard.json".
+                const cMeta = { name: key, displayName: songName, bpm: tcs[0].bpm, beatsPerMeasure: 4, stepsPerBeat: 4, difficulties: diffs, icon: player2 };
                 files.push({
                     name: `charts/${key}/${diff}.json`,
                     content: JSON.stringify({ strumLines, events, meta: cMeta, noteTypes, scrollSpeed: speed, stage, codenameChart: true, generatedBy: GENERATED_BY }, null, 2)
@@ -494,14 +514,19 @@
                 const i = sectionIndex(sections, f.t);
                 if (f.t > sections[i].start + 2) {
                     if (isV1) pushEv(f.t, "FocusCamera", f.c, "");
-                    else lostFocus++;
+                    else if (firstDiff) lostFocus++;
                 }
             });
-            zoomEvents.forEach(z => {
-                const zoom = toNum(z.v.zoom, 1);
-                if (z.v.mode !== "stage") approxZoom++;
-                pushEv(z.t, "Add Camera Zoom", round4(zoom - 1), "");
-            });
+            // Kade no tiene eventos en el chart: los zooms se descartan (antes sin avisar).
+            if (!isKade) {
+                zoomEvents.forEach(z => {
+                    const zoom = toNum(z.v.zoom, 1);
+                    if (z.v.mode !== "stage" && firstDiff) approxZoom++;
+                    pushEv(z.t, "Add Camera Zoom", round4(zoom - 1), "");
+                });
+            } else if (firstDiff && zoomEvents.length) {
+                warnings.push(`${zoomEvents.length} ZoomCamera omitidos: el chart de Kade no admite eventos.`);
+            }
             const events = [...evGroups.entries()].sort((a, b) => a[0] - b[0]).map(([t, list]) => [t, list]);
 
             let prevBpm = tcs[0].bpm;
@@ -550,7 +575,7 @@
         if (isCodename) {
             files.push({
                 name: `charts/${key}/meta.json`,
-                content: JSON.stringify({ name: key, displayName: songName, bpm: tcs[0].bpm, beatsPerMeasure: 4, stepsPerBeat: 4, difficulties: diffs.map(d => d.toUpperCase()) }, null, 2)
+                content: JSON.stringify({ name: key, displayName: songName, bpm: tcs[0].bpm, beatsPerMeasure: 4, stepsPerBeat: 4, difficulties: diffs }, null, 2)
             });
         }
 

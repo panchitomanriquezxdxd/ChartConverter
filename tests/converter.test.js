@@ -163,3 +163,50 @@ test("la firma generatedBy no rompe la ida y vuelta de psych_v1 ni legacy", () =
         assert.deepEqual(back.notesArr.map(n => n.d), r.notesArr.map(n => n.d), target);
     }
 });
+
+// ---- inverso: correcciones
+const vsliceChart = extra => Object.assign({
+    scrollSpeed: { default: 2.7 },
+    notes: { easy: [{ t: 0, d: 0, l: 0, p: [] }, { t: 6000, d: 5, l: 0, p: [] }], hard: [{ t: 0, d: 0, l: 0, p: [] }, { t: 6000, d: 5, l: 0, p: [] }] },
+    events: []
+}, extra);
+const vsliceMeta = { songName: "Inv", timeChanges: [{ t: 0, bpm: 120 }] };
+
+test("inverso: scrollSpeed solo con 'default' se usa en todas las dificultades", () => {
+    const out = CC.convertVSliceToTarget(vsliceChart(), vsliceMeta, "psych_v1", {});
+    for (const f of out.files) assert.equal(JSON.parse(f.content).speed, 2.7, f.name);
+    const own = CC.convertVSliceToTarget(vsliceChart({ scrollSpeed: { default: 2.7, hard: 3.1 } }), vsliceMeta, "psych_v1", {});
+    assert.deepEqual(own.files.map(f => JSON.parse(f.content).speed), [2.7, 3.1]);
+});
+
+test("inverso: FocusCamera con char -1 (posición fija) no se toma como oponente", () => {
+    const chart = vsliceChart({ events: [{ t: 0, e: "FocusCamera", v: { char: -1, x: 10, y: 20 } }] });
+    const out = CC.convertVSliceToTarget(chart, vsliceMeta, "psych_v1", {});
+    assert.equal(JSON.parse(out.files[0].content).notes[0].mustHitSection, true);
+    assert.ok(out.warnings.some(w => /posición fija/.test(w)));
+});
+
+test("inverso: los avisos de eventos no se multiplican por cada dificultad", () => {
+    const chart = vsliceChart({ events: [{ t: 1000, e: "FocusCamera", v: { char: 1 } }, { t: 500, e: "ZoomCamera", v: { zoom: 1.2, mode: "direct" } }] });
+    const out = CC.convertVSliceToTarget(chart, vsliceMeta, "legacy", {});
+    assert.ok(out.warnings.some(w => /^1 cambio\(s\) de cámara/.test(w)), out.warnings.join(" | "));
+    assert.ok(out.warnings.some(w => /^1 ZoomCamera/.test(w)), out.warnings.join(" | "));
+});
+
+test("inverso Kade: avisa que los ZoomCamera se descartan", () => {
+    const chart = vsliceChart({ events: [{ t: 500, e: "ZoomCamera", v: { zoom: 1.2, mode: "stage" } }] });
+    const out = CC.convertVSliceToTarget(chart, vsliceMeta, "kade", {});
+    assert.ok(out.warnings.some(w => /ZoomCamera omitidos/.test(w)));
+});
+
+test("inverso Codename: dificultades en minúsculas, iguales al nombre de archivo", () => {
+    const out = CC.convertVSliceToTarget(vsliceChart(), vsliceMeta, "codename", {});
+    const meta = JSON.parse(out.files.find(f => f.name.endsWith("meta.json")).content);
+    assert.deepEqual(meta.difficulties, ["easy", "hard"]);
+    assert.ok(out.files.some(f => f.name.endsWith("/easy.json")) && out.files.some(f => f.name.endsWith("/hard.json")));
+});
+
+test("buildVSliceMeta ordena las dificultades de fácil a difícil", () => {
+    const m = CC.buildVSliceMeta({ songName: "S", difficulties: ["hard", "easy", "normal"] });
+    assert.deepEqual(m.playData.difficulties, ["easy", "normal", "hard"]);
+});
