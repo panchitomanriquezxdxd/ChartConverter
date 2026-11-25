@@ -560,8 +560,34 @@ textarea { white-space: pre; overflow: auto; }
     width: 100%;
     font-size: 0.95rem;
 }
+.btn-support {
+    display: block;
+    box-sizing: border-box;
+    background: transparent;
+    color: var(--neon-cyan);
+    border: 2px solid var(--neon-cyan);
+    padding: 16px;
+    border-radius: 12px;
+    font-weight: 900;
+    width: 100%;
+    font-size: 1.05rem;
+    letter-spacing: 1px;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+    transition: all 0.2s ease;
+}
+@media (hover: hover) {
+    .btn-support:hover {
+        transform: translateY(-2px);
+        background: rgba(0, 240, 255, 0.1);
+        box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+    }
+}
+
 .btn-clear:focus-visible, .btn-convert:focus-visible, .btn-download:focus-visible,
-.btn-copy:focus-visible, #drop-zone:focus-visible {
+.btn-support:focus-visible, .btn-copy:focus-visible, #drop-zone:focus-visible {
     outline: 2px solid var(--neon-yellow);
     outline-offset: 2px;
 }
