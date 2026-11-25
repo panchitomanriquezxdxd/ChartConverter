@@ -341,7 +341,8 @@ function requireJSZip() {
 function psychModeFor(mode) {
     if (mode === "psych063" || mode === "kade") return "063";
     if (mode === "psych073") return "073";
-    if (mode === "psych104" || mode === "pslice") return "104";
+    if (mode === "psych104") return "104";
+    if (mode === "pslice") return "absolute";
     return "auto";
 }
 

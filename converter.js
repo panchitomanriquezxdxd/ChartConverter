@@ -193,7 +193,7 @@
     }
 
     // ------------------------------------------------------------ PSYCH / KADE → V SLICE
-    // psychMode: "auto" | "063" (legacy/Kade) | "073" | "104" (psych_v1 absoluto; pslice usa "104")
+    // psychMode: "auto" | "063" (legacy/Kade, fuerza relativos) | "073" | "104" (según el campo format) | "absolute" (P Slice, fuerza absolutos)
     // opts.extraEvents: lista de eventos [[t, [[nombre, v1, v2]]]] de un events.json de Psych (se suman a los del chart).
     function convertPsychToVSlice(rawData, file, psychMode, opts) {
         psychMode = psychMode || "auto";
@@ -207,8 +207,16 @@
         const warnings = [];
         // psych_v1 = carriles ABSOLUTOS. "psych_v1_convert" y sin formato = legacy (relativo a mustHitSection).
         const fmt = typeof song.format === "string" ? song.format.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
-        const isV1 = psychMode === "073" || psychMode === "104" ||
-            (psychMode === "auto" && fmt.startsWith("psychv1") && !fmt.includes("convert"));
+        // Igual que Psych al cargar un chart: solo el formato "psych_v1" lleva carriles absolutos. Antes los modos
+        // 0.7.x / 1.0 los trataban SIEMPRE como absolutos, así que un chart sin ese formato (0.7.x clásico, o uno
+        // viejo abierto en 1.0, que Psych convierte) salía con los lados de jugador/oponente cambiados en las
+        // secciones donde mustHitSection es falso. "absolute" (P Slice) fuerza carriles absolutos; "063" fuerza relativos.
+        const declaredV1 = fmt.startsWith("psychv1") && !fmt.includes("convert");
+        const isV1 = psychMode === "absolute" ||
+            ((psychMode === "073" || psychMode === "104" || psychMode === "auto") && declaredV1);
+        if (!isV1 && (psychMode === "073" || psychMode === "104")) {
+            warnings.push(`El chart no declara format "psych_v1": los carriles se interpretaron relativos a mustHitSection (como hace Psych al cargarlo).`);
+        }
         const needsLaneRemap = !isV1;
 
         const remapLane = (lane, mustHitSection) => {

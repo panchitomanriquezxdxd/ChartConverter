@@ -359,3 +359,34 @@ test("ida y vuelta de eventos: V-Slice → Psych → V-Slice conserva Hey!, velo
     assert.deepEqual(get("ScrollSpeed").map(e => [e.t, e.v.scroll, e.v.duration]), [[1000, 1.5, 16]]);
     assert.deepEqual(get("FocusCamera").filter(e => e.v.char === -1).map(e => [e.t, e.v.x, e.v.y]), [[1500, 400, 250]]);
 });
+
+// ---- carriles: el modo no debe invertir los lados de un chart relativo
+test("modos 0.7.x / 1.0 con un chart SIN format psych_v1 usan carriles relativos (como 0.6.3)", () => {
+    const chart = { song: { song: "L", bpm: 100, notes: [
+        { mustHitSection: true, sectionBeats: 4, sectionNotes: [[0, 0, 0], [0, 4, 0]] },
+        { mustHitSection: false, sectionBeats: 4, sectionNotes: [[2400, 0, 0], [2400, 5, 0]] }
+    ] } };
+    const lanes = r => r.notesArr.map(n => [n.t, n.d]);
+    const want = [[0, 0], [0, 4], [2400, 4], [2400, 1]];
+    assert.deepEqual(lanes(CC.convertPsychToVSlice(chart, FILE, "063")), want);
+    for (const mode of ["073", "104", "auto"]) {
+        assert.deepEqual(lanes(CC.convertPsychToVSlice(chart, FILE, mode)), want, mode);
+    }
+    assert.ok(CC.convertPsychToVSlice(chart, FILE, "104").warnings.some(w => /psych_v1/.test(w)));
+    assert.ok(!CC.convertPsychToVSlice(chart, FILE, "auto").warnings.some(w => /psych_v1/.test(w)));
+});
+
+test("chart psych_v1 declarado: carriles absolutos en 0.7.x, 1.0 y auto; P Slice los fuerza", () => {
+    const v1 = { format: "psych_v1", song: "V", bpm: 100, notes: [
+        { mustHitSection: false, sectionBeats: 4, sectionNotes: [[0, 1, 0], [0, 6, 0]] }
+    ] };
+    for (const mode of ["073", "104", "auto", "absolute"]) {
+        assert.deepEqual(CC.convertPsychToVSlice(v1, FILE, mode).notesArr.map(n => n.d), [1, 6], mode);
+    }
+    assert.deepEqual(CC.convertPsychToVSlice(v1, FILE, "063").notesArr.map(n => n.d), [5, 2]); // 063 fuerza relativos
+});
+
+test("P Slice ('absolute') fuerza carriles absolutos aunque el chart no declare el formato", () => {
+    const chart = { song: { song: "P", bpm: 100, notes: [{ mustHitSection: false, sectionBeats: 4, sectionNotes: [[0, 1, 0], [0, 6, 0]] }] } };
+    assert.deepEqual(CC.convertPsychToVSlice(chart, FILE, "absolute").notesArr.map(n => n.d), [1, 6]);
+});
