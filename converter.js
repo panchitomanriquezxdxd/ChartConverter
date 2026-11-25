@@ -9,7 +9,7 @@
     const KNOWN_DIFFS = ["easy", "normal", "hard", "erect", "nightmare"];
     const DEFAULT_RATINGS = { easy: 3, normal: 5, hard: 6, erect: 7, nightmare: 8 };
     // Firma que se escribe en el campo "generatedBy" de todo lo que genera la herramienta.
-    const GENERATED_BY = "Chart Converter V3 GCD";
+    const GENERATED_BY = "Chart Converter - Panchito & Deiby";
 
     // ------------------------------------------------------------ utilidades
     function parseJson(text) {
