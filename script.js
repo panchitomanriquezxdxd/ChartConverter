@@ -392,6 +392,7 @@ async function runForward() {
     //    entera y se convierte junto a cada chart (necesita su BPM y sus secciones), sin importar el orden de subida.
     const charts = [];
     let extraEvents = [];
+    let eventsFiles = 0;
     for (const file of selectedFiles) {
         if (isFunkinMaker) {
             // Un .FNMM es un ZIP: data.json (notas) + events.json + scene.json.
@@ -411,18 +412,22 @@ async function runForward() {
         } catch (err) {
             throw new Error(tr("err.badjson", { file: file.name, msg: err.message }));
         }
-        if (!isCodename && CC.isPsychEventsFile(file.name)) {
+        if (!isCodename && !isFunkinMaker && (CC.isPsychEventsFile(file.name) || CC.looksLikePsychEvents(rawData))) {
+            let list;
             try {
-                extraEvents = extraEvents.concat(CC.readPsychEventsFile(rawData));
+                list = CC.readPsychEventsFile(rawData);
             } catch (err) {
                 throw new Error(tr("err.fileprefix", { file: file.name, msg: err.message }));
             }
+            eventsFiles++;
+            if (!list.length) warnings.push(tr("warn.noevents", { file: file.name }));
+            extraEvents = extraEvents.concat(list);
         } else {
             charts.push({ file, rawData });
         }
     }
     if (!charts.length) {
-        throw new Error(tr(extraEvents.length ? "err.onlyevents" : "err.nocharts"));
+        throw new Error(tr(eventsFiles ? "err.onlyevents" : "err.nocharts"));
     }
 
     // 2) Conversión de cada chart

@@ -36,21 +36,36 @@
     function baseName(name) {
         return String(name || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
     }
+    // Quita el "ruido" que añaden las descargas y las copias al nombre: "cancion-hard (1)", "cancion-hard - copy",
+    // "cancion-hard-chart", "cancion-hard-2". Antes esos nombres no se reconocían y la dificultad caía a "normal":
+    // el pack salía sin la dificultad esperada y V Slice fallaba al cargarla ("error retrieving note data").
+    function stripFileNoise(name) {
+        let b = String(name || "").toLowerCase().trim(), prev;
+        do {
+            prev = b;
+            b = b.replace(/\s*\(\d+\)$/, "")
+                 .replace(/[-_ .]+(copy|copia|copie|cópia|kopie)(\s*\d+)?$/, "")
+                 .replace(/[-_ .]+(chart|metadata)$/, "")
+                 .replace(/([-_ .](?:easy|normal|hard|erect|nightmare))[-_ ]\d+$/, "$1")
+                 .trim();
+        } while (b !== prev);
+        return b;
+    }
     function getDiff(name) {
-        const lower = baseName(name).toLowerCase();
+        const lower = stripFileNoise(baseName(name));
         for (const d of KNOWN_DIFFS) {
-            if (lower === d || lower.endsWith("-" + d) || lower.endsWith("_" + d)) return d;
+            if (lower === d || [...lower.matchAll(/[-_ .]/g)].some(m => lower.slice(m.index + 1) === d)) return d;
         }
         return "normal";
     }
     function songKeyFromFile(name) {
-        let b = baseName(name).toLowerCase();
+        let b = stripFileNoise(baseName(name));
         // Quita sufijos en cualquier orden ("cancion-erect-chart" y "cancion-chart-erect" → "cancion").
         // Antes solo se quitaba la dificultad al final, así que "cancion-erect-chart" dejaba "cancion-erect".
         let changed = true;
         while (changed) {
             changed = false;
-            const m = b.match(/^(.+?)[-_](chart|metadata|easy|normal|hard|erect|nightmare)$/);
+            const m = b.match(/^(.+?)[-_ .](chart|metadata|easy|normal|hard|erect|nightmare)$/);
             if (m) { b = m[1]; changed = true; }
         }
         return b;
@@ -184,16 +199,30 @@
     // events.json de Psych (0.6.3 / 0.7 / 1.0): solo se toman los eventos. Las secciones de ese archivo
     // van vacías y NO deben convertirse en una dificultad ni generar FocusCamera. Sus eventos se pasan a
     // convertPsychToVSlice (opts.extraEvents) para convertirlos junto con el BPM y la cámara del chart.
+    // Se reconoce "events.json" aunque venga como "events (1).json", "events - copia.json" o "cancion-events.json".
     function isPsychEventsFile(name) {
-        return baseName(name).toLowerCase() === "events";
+        const b = stripFileNoise(baseName(name));
+        return b === "events" || /[-_ ]events$/.test(b);
     }
-    function readPsychEventsFile(rawData) {
+    // La lista [[tiempo, [[nombre, v1, v2]]]] puede venir en la raíz, en "events" o en "song.events".
+    function findPsychEventList(rawData) {
+        if (Array.isArray(rawData)) return rawData;
         const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
-        const list = (rawData && Array.isArray(rawData.events)) ? rawData.events : (song && song.events);
-        if (!Array.isArray(list)) {
-            throw new Error(t("conv.noevents"));
-        }
-        return list;
+        if (rawData && Array.isArray(rawData.events)) return rawData.events;
+        return song && Array.isArray(song.events) ? song.events : null;
+    }
+    // Un archivo con eventos pero SIN ninguna nota es un events.json aunque se llame de otra forma.
+    function looksLikePsychEvents(rawData) {
+        const list = findPsychEventList(rawData);
+        if (!list || !list.length) return false;
+        const song = rawData && rawData.song && typeof rawData.song === "object" ? rawData.song : rawData;
+        const sections = song && Array.isArray(song.notes) ? song.notes : [];
+        return !sections.some(s => s && Array.isArray(s.sectionNotes) && s.sectionNotes.length);
+    }
+    // Devuelve la lista de eventos (puede estar vacía: un events.json sin eventos no debe impedir convertir).
+    function readPsychEventsFile(rawData) {
+        if (rawData === null || typeof rawData !== "object") throw new Error(t("conv.noevents"));
+        return findPsychEventList(rawData) || [];
     }
 
     // ------------------------------------------------------------ PSYCH / KADE → V SLICE
@@ -238,7 +267,8 @@
         //  [time, "Nombre", v1, v2]  |  [time, -1, "Nombre", v1, v2]
         const extractInline = note => {
             if (note.length < 2) return null;
-            if (typeof note[1] === "string") return { name: note[1], v1: note[2], v2: note[3], t: toNum(note[0], NaN) };
+            // Un carril escrito como texto ("2") es una nota, no un evento.
+            if (typeof note[1] === "string" && !/^\s*-?\d+(\.\d+)?\s*$/.test(note[1])) return { name: note[1], v1: note[2], v2: note[3], t: toNum(note[0], NaN) };
             if (typeof note[1] === "number" && note[1] < 0 && typeof note[2] === "string") {
                 return { name: note[2], v1: note[3], v2: note[4], t: toNum(note[0], NaN) };
             }
@@ -284,7 +314,7 @@
                 if (inline) { addPsychEvent(inline.name, inline.v1, inline.t, inline.v2); return; }
 
                 const t = toNum(n[0], NaN);
-                const rawLane = toNum(n[1], NaN);
+                const rawLane = Math.round(toNum(n[1], NaN)); // V-Slice exige carriles enteros: un 1.5 invalidaría el chart entero
                 if (!Number.isFinite(t) || !Number.isFinite(rawLane)) return;
                 if (rawLane < 0) return; // nota de GF/evento antiguo: V-Slice no tiene carril GF
 
@@ -314,10 +344,13 @@
         if (skippedWarning) warnings.push(skippedWarning);
 
         const name = song.song || (file && file.name ? songKeyFromFile(file.name) : "Unknown");
+        // Velocidad 0 o negativa dejaría todas las flechas apiladas en V Slice.
+        let speed = toNum(song.speed, 2.5);
+        if (!(speed > 0)) { warnings.push(t("warn.badspeed", { speed: String(song.speed) })); speed = 2.5; }
         return {
             canonicalKey: String(name).toLowerCase(),
             songName: name,
-            speed: toNum(song.speed, 2.5),
+            speed,
             bpm: baseBpm,
             player1: song.player1 || "bf",
             player2: song.player2 || "dad",
@@ -934,7 +967,7 @@
 
     const api = {
         GENERATED_BY, parseJson, getDiff, songKeyFromFile, slug, baseName,
-        isPsychEventsFile, readPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget,
+        isPsychEventsFile, looksLikePsychEvents, readPsychEventsFile, convertPsychToVSlice, convertCodenameToVSlice, buildVSliceMeta, convertVSliceToTarget,
         isFunkinMakerFile, readFunkinMakerArchive, convertFunkinMakerToVSlice
     };
     if (typeof module !== "undefined" && module.exports) module.exports = api;

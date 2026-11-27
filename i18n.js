@@ -153,7 +153,9 @@
         "warn.fnmm.dups": "{n} nota(s) duplicada(s) en el mismo carril y tiempo se unificaron.",
         "warn.fnmm.skin": "{n} nota(s) con skin distinta a la normal: se conservaron como tipo de nota 'skinN'.",
         "warn.fnmm.trigger": "{n} nota(s) con evento al acertar/fallar (onPressEvent/onMissEvent) pierden ese evento: V-Slice no lo tiene.",
-        "warn.fnmm.nospeed": "Funkin Maker no guarda velocidad de notas ni personajes: se usó velocidad {speed}, bf / dad / gf y stage 'stage'. Cámbialos en el chart y la metadata si hace falta."
+        "warn.fnmm.nospeed": "Funkin Maker no guarda velocidad de notas ni personajes: se usó velocidad {speed}, bf / dad / gf y stage 'stage'. Cámbialos en el chart y la metadata si hace falta.",
+        "warn.badspeed": "Se corrigió la velocidad de scroll no válida ({speed}): se usó 2.5 (con 0 o negativa, todas las flechas quedarían apiladas).",
+        "warn.noevents": "{file}: el archivo de eventos no contiene ningún evento; se ignoró."
     };
 
     const en = {
@@ -289,7 +291,9 @@
         "warn.fnmm.dups": "{n} duplicate note(s) on the same lane and time were merged.",
         "warn.fnmm.skin": "{n} note(s) with a non-default skin: kept as note kind 'skinN'.",
         "warn.fnmm.trigger": "{n} note(s) with a hit/miss event (onPressEvent/onMissEvent) lose that event: V-Slice has no equivalent.",
-        "warn.fnmm.nospeed": "Funkin Maker does not store note speed or characters: speed {speed}, bf / dad / gf and stage 'stage' were used. Change them in the chart and metadata if needed."
+        "warn.fnmm.nospeed": "Funkin Maker does not store note speed or characters: speed {speed}, bf / dad / gf and stage 'stage' were used. Change them in the chart and metadata if needed.",
+        "warn.badspeed": "The invalid scroll speed ({speed}) was replaced: 2.5 was used (with 0 or a negative value all the arrows would stack up).",
+        "warn.noevents": "{file}: the events file contains no events; it was ignored."
     };
 
     const pt = {
@@ -425,7 +429,9 @@
         "warn.fnmm.dups": "{n} nota(s) duplicada(s) na mesma lane e no mesmo instante foram unificadas.",
         "warn.fnmm.skin": "{n} nota(s) com skin diferente da normal: mantidas como tipo de nota 'skinN'.",
         "warn.fnmm.trigger": "{n} nota(s) com evento ao acertar/falhar (onPressEvent/onMissEvent) perdem esse evento: o V-Slice não o tem.",
-        "warn.fnmm.nospeed": "O Funkin Maker não guarda a velocidade das notas nem as personagens: foi usada a velocidade {speed}, bf / dad / gf e o stage 'stage'. Altera-os no chart e na metadata, se for preciso."
+        "warn.fnmm.nospeed": "O Funkin Maker não guarda a velocidade das notas nem as personagens: foi usada a velocidade {speed}, bf / dad / gf e o stage 'stage'. Altera-os no chart e na metadata, se for preciso.",
+        "warn.badspeed": "A velocidade de scroll inválida ({speed}) foi corrigida: usou-se 2.5 (com 0 ou negativa, todas as setas ficariam empilhadas).",
+        "warn.noevents": "{file}: o ficheiro de eventos não contém nenhum evento; foi ignorado."
     };
 
     // Português do Brasil: parte do português de Portugal y solo cambia lo que difiere.
@@ -500,7 +506,9 @@
         "warn.fnmm.dups": "{n} nota(s) duplicada(s) na mesma lane e no mesmo tempo foram unificadas.",
         "warn.fnmm.skin": "{n} nota(s) com skin diferente da normal: mantidas como tipo de nota 'skinN'.",
         "warn.fnmm.trigger": "{n} nota(s) com evento ao acertar/errar (onPressEvent/onMissEvent) perdem esse evento: o V-Slice não tem isso.",
-        "warn.fnmm.nospeed": "O Funkin Maker não guarda a velocidade das notas nem os personagens: foi usada a velocidade {speed}, bf / dad / gf e o stage 'stage'. Altere-os no chart e na metadata se precisar."
+        "warn.fnmm.nospeed": "O Funkin Maker não guarda a velocidade das notas nem os personagens: foi usada a velocidade {speed}, bf / dad / gf e o stage 'stage'. Altere-os no chart e na metadata se precisar.",
+        "warn.badspeed": "A velocidade de scroll inválida ({speed}) foi corrigida: usou-se 2.5 (com 0 ou negativa, todas as setas ficariam empilhadas).",
+        "warn.noevents": "{file}: o arquivo de eventos não contém nenhum evento; foi ignorado."
     });
 
     const fr = {
@@ -636,7 +644,9 @@
         "warn.fnmm.dups": "{n} note(s) en double sur la même lane et au même instant ont été fusionnée(s).",
         "warn.fnmm.skin": "{n} note(s) avec un skin différent du normal : conservée(s) comme type de note « skinN ».",
         "warn.fnmm.trigger": "{n} note(s) avec un événement au succès/à l'échec (onPressEvent/onMissEvent) perdent cet événement : V-Slice n'en a pas.",
-        "warn.fnmm.nospeed": "Funkin Maker n'enregistre ni la vitesse des notes ni les personnages : la vitesse {speed}, bf / dad / gf et le stage « stage » ont été utilisés. Modifiez-les dans le chart et la metadata si besoin."
+        "warn.fnmm.nospeed": "Funkin Maker n'enregistre ni la vitesse des notes ni les personnages : la vitesse {speed}, bf / dad / gf et le stage « stage » ont été utilisés. Modifiez-les dans le chart et la metadata si besoin.",
+        "warn.badspeed": "La vitesse de défilement invalide ({speed}) a été corrigée : 2.5 a été utilisée (avec 0 ou une valeur négative, toutes les flèches seraient empilées).",
+        "warn.noevents": "{file} : le fichier d'événements ne contient aucun événement ; il a été ignoré."
     };
 
     const de = {
@@ -772,7 +782,9 @@
         "warn.fnmm.dups": "{n} doppelte Note(n) auf derselben Lane zur gleichen Zeit wurden zusammengeführt.",
         "warn.fnmm.skin": "{n} Note(n) mit einem anderen Skin als dem normalen: als Notentyp 'skinN' beibehalten.",
         "warn.fnmm.trigger": "{n} Note(n) mit Treffer-/Fehlschlag-Ereignis (onPressEvent/onMissEvent) verlieren dieses Ereignis: V-Slice hat kein Gegenstück.",
-        "warn.fnmm.nospeed": "Funkin Maker speichert weder die Notengeschwindigkeit noch Charaktere: Es wurden Geschwindigkeit {speed}, bf / dad / gf und die Stage 'stage' verwendet. Ändere sie bei Bedarf im Chart und in der Metadata."
+        "warn.fnmm.nospeed": "Funkin Maker speichert weder die Notengeschwindigkeit noch Charaktere: Es wurden Geschwindigkeit {speed}, bf / dad / gf und die Stage 'stage' verwendet. Ändere sie bei Bedarf im Chart und in der Metadata.",
+        "warn.badspeed": "Die ungültige Scroll-Geschwindigkeit ({speed}) wurde korrigiert: Es wurde 2.5 verwendet (bei 0 oder negativen Werten lägen alle Pfeile übereinander).",
+        "warn.noevents": "{file}: Die Events-Datei enthält keine Events und wurde ignoriert."
     };
 
     const it = {
@@ -908,7 +920,9 @@
         "warn.fnmm.dups": "{n} nota/e duplicate sulla stessa lane e nello stesso istante sono state unificate.",
         "warn.fnmm.skin": "{n} nota/e con skin diversa da quella normale: mantenute come tipo di nota 'skinN'.",
         "warn.fnmm.trigger": "{n} nota/e con evento al colpo/errore (onPressEvent/onMissEvent) perdono quell'evento: V-Slice non lo prevede.",
-        "warn.fnmm.nospeed": "Funkin Maker non salva la velocità delle note né i personaggi: sono stati usati velocità {speed}, bf / dad / gf e lo stage 'stage'. Modificali nel chart e nella metadata se serve."
+        "warn.fnmm.nospeed": "Funkin Maker non salva la velocità delle note né i personaggi: sono stati usati velocità {speed}, bf / dad / gf e lo stage 'stage'. Modificali nel chart e nella metadata se serve.",
+        "warn.badspeed": "La velocità di scorrimento non valida ({speed}) è stata corretta: è stato usato 2.5 (con 0 o un valore negativo tutte le frecce si sovrapporrebbero).",
+        "warn.noevents": "{file}: il file degli eventi non contiene eventi ed è stato ignorato."
     };
 
     const DICT = { es, en, pt, "pt-BR": ptBR, fr, de, it };

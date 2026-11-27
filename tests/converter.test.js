@@ -232,7 +232,9 @@ test("events.json: se reconoce por nombre y se valida", () => {
     assert.ok(!CC.isPsychEventsFile("events-hard.json") && !CC.isPsychEventsFile("song.json"));
     assert.equal(CC.readPsychEventsFile({ song: { notes: [], events: [[1, []]] } }).length, 1);
     assert.equal(CC.readPsychEventsFile({ events: [[1, []], [2, []]], notes: [] }).length, 2);
-    assert.throws(() => CC.readPsychEventsFile({ song: { notes: [] } }), /events/);
+    assert.deepEqual(CC.readPsychEventsFile({ song: { notes: [] } }), []); // sin eventos: no impide convertir
+    assert.deepEqual(CC.readPsychEventsFile([[5, [["Hey!", "bf", ""]]]]).length, 1); // lista en la raíz
+    assert.throws(() => CC.readPsychEventsFile(null), /events/);
 });
 
 test("events.json: sus eventos se suman al chart sin crear secciones ni dificultades", () => {
@@ -527,4 +529,36 @@ test("Funkin Maker: un ZIP sin data.json o con JSON roto da un error claro", asy
     const bad = new JSZip();
     bad.file("data.json", "{no es json");
     await assert.rejects(CC.readFunkinMakerArchive(await JSZip.loadAsync(await bad.generateAsync({ type: "nodebuffer" }))), /no es un JSON válido/);
+});
+
+// ---- nombres de archivo con "ruido" de descargas/copias, events.json flexible, valores raros
+test("getDiff / songKeyFromFile ignoran '(1)', 'copy', '-chart' y números finales", () => {
+    for (const n of ["song-hard.json", "song-hard (1).json", "song-hard-chart.json", "song.hard.json", "song-hard - copy.json", "song-hard-2.json", "Song_Hard (2).JSON", "song-hard copia.json"]) {
+        assert.equal(CC.getDiff(n), "hard", n);
+        assert.equal(CC.songKeyFromFile(n), "song", n);
+    }
+    assert.equal(CC.getDiff("song (1).json"), "normal");
+    assert.equal(CC.getDiff("hard.json"), "hard");
+    assert.equal(CC.songKeyFromFile("level-2.json"), "level-2"); // un número sin dificultad delante es parte del nombre
+});
+
+test("events.json se reconoce con nombres alternativos y por contenido", () => {
+    for (const n of ["events.json", "events (1).json", "Events - copia.json", "cancion-events.json"]) assert.ok(CC.isPsychEventsFile(n), n);
+    for (const n of ["events-hard.json", "song.json", "myevents.json"]) assert.ok(!CC.isPsychEventsFile(n), n);
+    const onlyEvents = { song: { notes: [{ sectionNotes: [] }], events: [[100, [["Hey!", "bf", ""]]]] } };
+    assert.ok(CC.looksLikePsychEvents(onlyEvents));
+    assert.ok(CC.looksLikePsychEvents({ events: [[1, []]] }));
+    assert.ok(!CC.looksLikePsychEvents({ song: { notes: [{ sectionNotes: [[0, 0, 0]] }], events: [[1, []]] } })); // un chart con notas
+    assert.ok(!CC.looksLikePsychEvents({ song: { notes: [] , events: [] } }));
+});
+
+test("carriles decimales o en texto, y velocidad inválida: el resultado es siempre válido para V-Slice", () => {
+    const sec = notes => ({ mustHitSection: true, sectionBeats: 4, sectionNotes: notes });
+    const r = CC.convertPsychToVSlice({ song: { song: "V", bpm: 100, speed: 0, notes: [sec([[0, 1.5, 0], [100, "2", 0], [200, 9, 0]])] } }, FILE, "063");
+    assert.ok(r.notesArr.length === 3 && r.notesArr.every(n => Number.isInteger(n.d) && n.d >= 0 && n.d <= 7), JSON.stringify(r.notesArr));
+    assert.equal(r.speed, 2.5);
+    assert.ok(r.warnings.some(w => /velocidad de scroll/.test(w)));
+    const neg = CC.convertPsychToVSlice({ song: { song: "V", bpm: 100, speed: -3, notes: [sec([[0, 0, 0]])] } }, FILE, "063");
+    assert.equal(neg.speed, 2.5);
+    assert.equal(CC.convertPsychToVSlice({ song: { song: "V", bpm: 100, notes: [sec([[0, 0, 0]])] } }, FILE, "063").warnings.length, 0); // sin speed: 2.5 por defecto, sin aviso
 });
