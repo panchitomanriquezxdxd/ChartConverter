@@ -482,8 +482,42 @@
                 throw new Error(t("err.badjson", { file: entry, msg: err.message }));
             }
         };
-        const data = await read("data.json");
+        let data = await read("data.json");
         if (!data) throw new Error(t("conv.fnmm.nodata"));
+        // Busca el objeto que contiene "strumLines" (puede estar anidado, con otra capitalización, o en otro JSON del ZIP).
+        const findStrum = (obj, depth) => {
+            if (!obj || typeof obj !== "object" || depth > 3) return null;
+            if (!Array.isArray(obj)) {
+                for (const k of Object.keys(obj)) {
+                    if (/^strum_?lines$/i.test(k) && Array.isArray(obj[k])) {
+                        return k === "strumLines" ? obj : Object.assign({}, obj, { strumLines: obj[k] });
+                    }
+                }
+            }
+            for (const k of Object.keys(obj)) {
+                const r = findStrum(obj[k], depth + 1);
+                if (r) return r;
+            }
+            return null;
+        };
+        let found = findStrum(data, 0);
+        if (!found) {
+            const others = Object.keys(zip.files).filter(n => /\.json$/i.test(n) && !zip.files[n].dir
+                && !/(^|\/)(sprites|__MACOSX)\//i.test(n) && !/(^|\/)\._/.test(n) && !/(^|\/)(events|scene)\.json$/i.test(n));
+            for (const n of others) {
+                try {
+                    found = findStrum(parseJson(await zip.files[n].async("string")), 0);
+                } catch (e) { /* no era un JSON válido: se ignora */ }
+                if (found) break;
+            }
+        }
+        if (found) data = found;
+        else {
+            const keys = (data && typeof data === "object") ? Object.keys(data).slice(0, 12).join(", ") : typeof data;
+            const files = Object.keys(zip.files).filter(n => !zip.files[n].dir).slice(0, 12).join(", ");
+            const err = new Error(t("conv.fnmm.nostrum") + ` [data.json: ${keys || "∅"} | ZIP: ${files}]`);
+            throw err;
+        }
         return { data, events: await read("events.json"), scene: await read("scene.json") };
     }
 

@@ -562,3 +562,13 @@ test("carriles decimales o en texto, y velocidad inválida: el resultado es siem
     assert.equal(neg.speed, 2.5);
     assert.equal(CC.convertPsychToVSlice({ song: { song: "V", bpm: 100, notes: [sec([[0, 0, 0]])] } }, FILE, "063").warnings.length, 0); // sin speed: 2.5 por defecto, sin aviso
 });
+
+test("FNMM: strumLines anidado o en otro JSON del ZIP", async () => {
+    const mk = files => ({ files: Object.fromEntries(Object.keys(files).map(n => [n, { dir: false, async: async () => JSON.stringify(files[n]) }])) });
+    const sl = [[[{ start: 1, duration: 0 }], [], [], []], [[], [], [], []]];
+    let r = await CC.readFunkinMakerArchive(mk({ "data.json": { song: { bpm: 120, StrumLines: sl } } }));
+    assert.ok(Array.isArray(r.data.strumLines));
+    r = await CC.readFunkinMakerArchive(mk({ "data.json": { name: "x" }, "chart.json": { strumLines: sl } }));
+    assert.ok(Array.isArray(r.data.strumLines));
+    await assert.rejects(CC.readFunkinMakerArchive(mk({ "data.json": { name: "x" } })), /data\.json: name/);
+});
